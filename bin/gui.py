@@ -87,26 +87,23 @@ def buildProgressLogs(self):
     self.slider_progressbar_frame.grid(row=0, column=1, padx=(20, 0), pady=(20, 0), sticky="nsew")
     self.slider_progressbar_frame.grid_columnconfigure(0, weight=1)
     self.slider_progressbar_frame.grid_rowconfigure(4, weight=1)
-    self.progressbar_label_1 = customtkinter.CTkLabel(self.slider_progressbar_frame, text="Flutter pub get",
+    self.progress_labels = []
+    self.progress_status_labels = []
+    self.progressbar_sliders = []
+    for idx, (key, value) in enumerate(tasks.items()):
+        progress = customtkinter.CTkLabel(self.slider_progressbar_frame, text=f"{value}",
                                                       font=customtkinter.CTkFont(size=14, weight="bold"))
-    self.progressbar_label_1.grid(row=1, column=0, padx=(10, 5), pady=(2, 2), sticky="w")
-    self.progressbar_status_1 = customtkinter.CTkLabel(self.slider_progressbar_frame, text="✅",
-                                                       font=customtkinter.CTkFont(size=14, weight="bold"))
-    self.progressbar_status_1.grid(row=1, column=2, padx=(5, 10), pady=(2, 2), sticky="w")
-    self.progressbar_label_2 = customtkinter.CTkLabel(self.slider_progressbar_frame, text="Flutter build apk",
-                                                      font=customtkinter.CTkFont(size=14, weight="bold"))
-    self.progressbar_label_2.grid(row=2, column=0, padx=(10, 5), pady=(2, 2), sticky="w")
-    self.progressbar_2 = customtkinter.CTkProgressBar(self.slider_progressbar_frame)
-    self.progressbar_2.grid(row=2, column=2, padx=(5, 10), pady=(2, 2), sticky="w")
-    self.progressbar_label_3 = customtkinter.CTkLabel(self.slider_progressbar_frame, text="Flutter build appbundle",
-                                                      font=customtkinter.CTkFont(size=14, weight="bold"))
-    self.progressbar_label_3.grid(row=3, column=0, padx=(10, 5), pady=(2, 2), sticky="w")
-    self.progressbar_status_3 = customtkinter.CTkLabel(self.slider_progressbar_frame, text="⏳",
-                                                       font=customtkinter.CTkFont(size=14, weight="bold"))
-    self.progressbar_status_3.grid(row=3, column=2, padx=(5, 10), pady=(2, 2), sticky="w")
+        progress.grid(row=idx+1, column=0, padx=(10, 5), pady=2, sticky="w")
+        self.progress_labels.append(progress)
+        progress_status = customtkinter.CTkLabel(self.slider_progressbar_frame, text="⏳",
+                                                           font=customtkinter.CTkFont(size=14, weight="bold"))
+        progress_status.grid(row=idx+1, column=3, padx=(5, 10), pady=(2, 2), sticky="w")
+        self.progress_status_labels.append(progress_status)
+        progressbar = customtkinter.CTkProgressBar(self.slider_progressbar_frame)
+        self.progressbar_sliders.append(progressbar)
     self.show_logs_button = customtkinter.CTkButton(self.slider_progressbar_frame, command=self.show_logs_command,
                                                     text="Show Logs")
-    self.show_logs_button.grid(row=4, column=0, padx=20, pady=(10, 0), sticky="w")
+    self.show_logs_button.grid(row=5, column=0, padx=20, pady=(10, 0), sticky="w")
 
     # Logs
     self.logs_textbox = customtkinter.CTkTextbox(self, width=250)
@@ -182,13 +179,14 @@ def resetDefaults(self):
     # set default values
     self.appearance_mode_optionemenu.set("Dark")
     self.combobox_1.set("backend")
-    self.progressbar_2.configure(mode="indeterminnate")
-    self.progressbar_2.start()
+    # self.progressbar_2.configure(mode="indeterminnate")
+    # self.progressbar_2.start()
     self.logs_textbox.insert("0.0", "Logs:\n\n" + "Flutter pub get ...\nFlutter build apk ...\n")
 
 
 def getValues(self):
     return {
+        "self": self,
         "domain": self.combobox_1.get(),
         "version": self.version_value.get(),
         "buildNumber": self.build_value.get(),
