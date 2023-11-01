@@ -9,8 +9,6 @@ def build(self, domain, version, buildNumber, projects, tasks, gitBranch):
     print(domain, version, buildNumber, projects, tasks, gitBranch, sep="\n")
     t = Thread(target=lambda: performTasks(self, tasks))
     t.start()
-    # for value in tasks:
-        # eval(value)(self)
 
 
 def performTasks(self, tasks):
