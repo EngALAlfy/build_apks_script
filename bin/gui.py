@@ -33,11 +33,12 @@ class App(customtkinter.CTk):
             self.show_logs_button.configure(text="Show Logs")
 
     def browse_button(self):
-        # Allow user to select a directory and store it in global var
-        # called folder_path
         filename = filedialog.askdirectory()
-        self.folder_path.set(filename)
-        print(filename)
+        self.base_path.set(filename)
+
+    def browse_button2(self):
+        filename = filedialog.askdirectory()
+        self.save_path.set(filename)
 
 
 def configureTkinter(self):
@@ -72,13 +73,23 @@ def buildSideBar(self):
 
 def browseBar(self):
     # Browse saved directory
-    self.folder_path = tkinter.StringVar()
-    self.entry = customtkinter.CTkEntry(self, placeholder_text="Save Directory", textvariable=self.folder_path)
-    self.entry.grid(row=3, column=1, columnspan=2, padx=(20, 0), pady=(20, 20), sticky="nsew")
-    self.main_button_1 = customtkinter.CTkButton(master=self, text="Browse", command=self.browse_button,
+    self.base_path = tkinter.StringVar()
+    self.base_entry = customtkinter.CTkEntry(self, textvariable=self.base_path)
+    self.base_entry.grid(row=3, column=1, columnspan=2, padx=(20, 0), pady=5, sticky="nsew")
+
+    self.save_path = tkinter.StringVar()
+    self.save_entry = customtkinter.CTkEntry(self, textvariable=self.save_path)
+    self.save_entry.grid(row=4, column=1, columnspan=2, padx=(20, 0), pady=5, sticky="nsew")
+
+    self.browse_button_1 = customtkinter.CTkButton(master=self, text="Browse Apps Directory", command=self.browse_button,
                                                  fg_color="transparent", border_width=2,
                                                  text_color=("gray10", "#DCE4EE"))
-    self.main_button_1.grid(row=3, column=3, padx=(20, 20), pady=(20, 20), sticky="nsew")
+    self.browse_button_1.grid(row=3, column=3, padx=(20, 20), pady=5, sticky="nsew")
+
+    self.browse_button_2 = customtkinter.CTkButton(master=self, text="Browse Save Directory", command=self.browse_button2,
+                                                 fg_color="transparent", border_width=2,
+                                                 text_color=("gray10", "#DCE4EE"))
+    self.browse_button_2.grid(row=4, column=3, padx=(20, 20), pady=5, sticky="nsew")
 
 
 def buildProgressLogs(self):
@@ -179,9 +190,7 @@ def resetDefaults(self):
     # set default values
     self.appearance_mode_optionemenu.set("Dark")
     self.combobox_1.set("backend")
-    # self.progressbar_2.configure(mode="indeterminnate")
-    # self.progressbar_2.start()
-    self.logs_textbox.insert("0.0", "Logs:\n\n" + "Flutter pub get ...\nFlutter build apk ...\n")
+    self.logs_textbox.insert("0.0", "Start Logging:\n\n")
 
 
 def getValues(self):
@@ -189,10 +198,12 @@ def getValues(self):
         "self": self,
         "domain": self.combobox_1.get(),
         "version": self.version_value.get(),
-        "buildNumber": self.build_value.get(),
+        "build_number": self.build_value.get(),
         "projects": list(map(lambda x: x.get(), filter(lambda x: x.get() != 0, self.scrollable_frame_switches))),
         "tasks": list(map(lambda x: x.get(), filter(lambda x: x.get() != 0, self.checkbox_tasks))),
-        "gitBranch": self.radio_var.get(),
+        "git_branch": self.radio_var.get(),
+        "base_dir": self.base_path.get(),
+        "save_dir": self.save_path.get(),
     }
 
 
