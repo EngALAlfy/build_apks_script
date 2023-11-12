@@ -1,3 +1,4 @@
-.idea
-dist
-build
+.idea/
+dist/
+build/
+build_apks.spec
