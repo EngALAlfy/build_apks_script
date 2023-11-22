@@ -192,7 +192,7 @@ try:
         project_path = directory_path.replace("$$", project)
         os.chdir(project_path)
         print(f"{bcolors.OKGREEN}[{project}] Current path: [{project_path}]{bcolors.ENDC}")
-        # change_git_branch(project)
+        change_git_branch(project)
         change_domains(project)
         build_flutter(project)
         copy_builds(project)
