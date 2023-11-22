@@ -47,8 +47,8 @@ LINE = '*' * 50
 
 
 def change_git_branch(project):
-    print(f"{bcolors.OKGREEN}[{project}] Change GIT branch{bcolors.ENDC}")
-    os.system("git pull ori development")
+    print(f"{bcolors.OKGREEN}[{project}] Update GIT data from branch development{bcolors.ENDC}")
+    os.system("git pull origin development:development ")
 
 
 def change_domains(project):
@@ -141,6 +141,20 @@ def print_msg_box(msg, indent=1, width=None, title=None, color=bcolors.BOLD):
     print(f"{color}{box}{bcolors.ENDC}")
 
 
+def get_arg_value(option):
+    # Find the index of the option in the list
+    if option in sys.argv[1:]:
+        index_of_option = sys.argv.index(option)
+        # Get the value following the option
+        if index_of_option + 1 < len(sys.argv):
+            option_value = sys.argv[index_of_option + 1]
+
+            return option_value
+        else:
+            return None
+    else:
+        return None
+
 ##############################################
 #                                            #
 #                  Start                     #
@@ -153,7 +167,24 @@ print("\n")
 print(f"{bcolors.WARNING}Start building APKs... {bcolors.ENDC}")
 print("\n")
 
+# you may pass only one or more projects
+selected_projects = get_arg_value("--only")
+
+if selected_projects is not None:
+    # Split the comma-separated values into a list
+    selected_projects = selected_projects.split(',')
+    print(selected_projects)
+
+    # Check if each selected project is in the selected_projects array
+    for project in selected_projects:
+        if project not in projects:
+            selected_projects.remove(project)
+    if selected_projects:
+        projects = selected_projects
+
 try:
+    print_msg_box(f"\n Selected Projects \n {projects} \n", color=bcolors.OKBLUE, indent=10)
+
     for project in projects:
         print_msg_box(f"\n [{project}] \n Start building APKs for {project} \n", color=bcolors.OKCYAN, indent=10)
         print("\n")
