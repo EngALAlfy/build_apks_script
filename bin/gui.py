@@ -1,3 +1,4 @@
+import json
 import tkinter
 import tkinter.messagebox
 from tkinter import filedialog
@@ -33,12 +34,16 @@ class App(customtkinter.CTk):
             self.show_logs_button.configure(text="Show Logs")
 
     def browse_button(self):
-        filename = filedialog.askdirectory()
-        self.base_path.set(filename)
+        file_path = filedialog.askdirectory(initialdir=self.base_path.get(), title="Select Base Directory")
+        if file_path:
+            self.base_path.set(file_path)
+            save_json({"base_path": self.base_path.get()})
 
     def browse_button2(self):
-        filename = filedialog.askdirectory()
-        self.save_path.set(filename)
+        file_path = filedialog.askdirectory(initialdir=self.save_path.get(), title="Select Save Directory")
+        if file_path:
+            self.save_path.set(file_path)
+            save_json({"save_path": self.save_path.get()})
 
 
 def configureTkinter(self):
@@ -73,22 +78,24 @@ def buildSideBar(self):
 
 def browseBar(self):
     # Browse saved directory
-    self.base_path = tkinter.StringVar()
+    self.base_path = tkinter.StringVar(value=load_json("base_path"))
     self.base_entry = customtkinter.CTkEntry(self, textvariable=self.base_path)
     self.base_entry.grid(row=3, column=1, columnspan=2, padx=(20, 0), pady=5, sticky="nsew")
 
-    self.save_path = tkinter.StringVar()
+    self.save_path = tkinter.StringVar(value=load_json("save_path"))
     self.save_entry = customtkinter.CTkEntry(self, textvariable=self.save_path)
     self.save_entry.grid(row=4, column=1, columnspan=2, padx=(20, 0), pady=5, sticky="nsew")
 
-    self.browse_button_1 = customtkinter.CTkButton(master=self, text="Browse Apps Directory", command=self.browse_button,
-                                                 fg_color="transparent", border_width=2,
-                                                 text_color=("gray10", "#DCE4EE"))
+    self.browse_button_1 = customtkinter.CTkButton(master=self, text="Browse Apps Directory",
+                                                   command=self.browse_button,
+                                                   fg_color="transparent", border_width=2,
+                                                   text_color=("gray10", "#DCE4EE"))
     self.browse_button_1.grid(row=3, column=3, padx=(20, 20), pady=5, sticky="nsew")
 
-    self.browse_button_2 = customtkinter.CTkButton(master=self, text="Browse Save Directory", command=self.browse_button2,
-                                                 fg_color="transparent", border_width=2,
-                                                 text_color=("gray10", "#DCE4EE"))
+    self.browse_button_2 = customtkinter.CTkButton(master=self, text="Browse Save Directory",
+                                                   command=self.browse_button2,
+                                                   fg_color="transparent", border_width=2,
+                                                   text_color=("gray10", "#DCE4EE"))
     self.browse_button_2.grid(row=4, column=3, padx=(20, 20), pady=5, sticky="nsew")
 
 
@@ -103,12 +110,12 @@ def buildProgressLogs(self):
     self.progressbar_sliders = []
     for idx, (key, value) in enumerate(tasks.items()):
         progress = customtkinter.CTkLabel(self.slider_progressbar_frame, text=f"{value}",
-                                                      font=customtkinter.CTkFont(size=14, weight="bold"))
-        progress.grid(row=idx+1, column=0, padx=(10, 5), pady=2, sticky="w")
+                                          font=customtkinter.CTkFont(size=14, weight="bold"))
+        progress.grid(row=idx + 1, column=0, padx=(10, 5), pady=2, sticky="w")
         self.progress_labels.append(progress)
         progress_status = customtkinter.CTkLabel(self.slider_progressbar_frame, text="⏳",
-                                                           font=customtkinter.CTkFont(size=14, weight="bold"))
-        progress_status.grid(row=idx+1, column=3, padx=(5, 10), pady=(2, 2), sticky="w")
+                                                 font=customtkinter.CTkFont(size=14, weight="bold"))
+        progress_status.grid(row=idx + 1, column=3, padx=(5, 10), pady=(2, 2), sticky="w")
         self.progress_status_labels.append(progress_status)
         progressbar = customtkinter.CTkProgressBar(self.slider_progressbar_frame)
         self.progressbar_sliders.append(progressbar)
@@ -209,3 +216,47 @@ def getValues(self):
 
 def change_appearance_mode_event(new_appearance_mode: str):
     customtkinter.set_appearance_mode(new_appearance_mode)
+
+
+def load_json(key):
+    try:
+        with open("output.json", 'r') as json_file:
+            data = json.load(json_file)
+            if key in data:
+                return data[key]
+            return None
+    except FileNotFoundError:
+        # If the file doesn't exist, return None
+        print(f"File not found")
+        return None
+    except json.JSONDecodeError:
+        print(f"Error decoding JSON in file")
+        return None
+
+
+def save_json(data):
+    try:
+        with open("output.json", 'r+') as json_file:
+            try:
+                # Load existing data
+                existing_data = json.load(json_file)
+            except json.JSONDecodeError:
+                # If the file is empty or not valid JSON, initialize with an empty dictionary
+                existing_data = {}
+
+            # Append the new data to the existing dictionary
+            existing_data.update(data)
+
+            # Move the file cursor to the beginning before writing
+            json_file.seek(0)
+
+            # Write the updated data back to the file
+            json.dump(existing_data, json_file, indent=2)
+
+            # Truncate the remaining content in case the new data is shorter than the existing
+            json_file.truncate()
+
+    except FileNotFoundError:
+        # If the file doesn't exist, create a new file with the new data
+        with open("output.json", 'w') as json_file:
+            json.dump(data, json_file, indent=2)
