@@ -125,6 +125,10 @@ def buildProgressLogs(self):
 
     # Logs
     self.logs_textbox = customtkinter.CTkTextbox(self, width=250)
+    self.logs_textbox.tag_add("normal", "1.0", "end")
+    self.logs_textbox.tag_add("red", "2.0", "2.9")
+    self.logs_textbox.tag_add("green", "3.0", "3.11")
+    self.logs_textbox.tag_add("blue", "4.0", "4.10")
 
 
 def buildVersionConfiguration(self):
@@ -198,6 +202,12 @@ def resetDefaults(self):
     self.appearance_mode_optionemenu.set("Dark")
     self.combobox_1.set("backend")
     self.logs_textbox.insert("0.0", "Start Logging:\n\n")
+
+    # Define tag configurations for colors
+    self.logs_textbox.tag_config("normal", foreground="white")
+    self.logs_textbox.tag_config("red", foreground="red")
+    self.logs_textbox.tag_config("green", foreground="green")
+    self.logs_textbox.tag_config("blue", foreground="blue")
 
 
 def getValues(self):
