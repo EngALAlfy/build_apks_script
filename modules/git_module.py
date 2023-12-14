@@ -12,6 +12,9 @@ def git_clone(project):
     workspace_dir = os.getenv('GIT_WORKSPACE')
     os.chdir(workspace_dir)
 
+    # clean any repo first
+    os.system(f"rmdir /s /q {project}")
+
     user = os.getenv('GIT_USER')
     token = os.getenv('GIT_TOKEN')
     branch = os.getenv('GIT_BRANCH')
