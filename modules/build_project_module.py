@@ -7,7 +7,7 @@
 ##############################################
 from threading import Thread
 
-from modules import git_module, file_module, flutter_module
+from modules import git_module, file_module, flutter_module, upload_module, send_module
 from utils import print_utils
 
 
@@ -19,17 +19,22 @@ def build_project_thread(project, domain):
     # change domain of build
     file_module.change_domain(project, domain)
     # flutter clean
-    flutter_module.clean(project)
+    # flutter_module.clean(project)
     # flutter pub get
-    flutter_module.pub_get(project)
+    # flutter_module.pub_get(project)
     # flutter intl generate
-    flutter_module.intl_generate(project)
+    # flutter_module.intl_generate(project)
     # flutter build debug
-    flutter_module.build_debug(project)
+    # flutter_module.build_debug(project)
     # flutter build release
-    flutter_module.build_release(project)
+    # flutter_module.build_release(project)
     # flutter build appbundle
-    flutter_module.build_appbundle(project)
+    # flutter_module.build_appbundle(project)
+    # copy files
+    # file_module.copy_files(project, domain)
+    # upload builds to mega
+    # upload_module.upload_to_mega(project, domain)
+    send_module.send_to_whatsapp(project, "file_url")
 
 
 def build(project, domain):

@@ -6,6 +6,11 @@
 #                                            #
 ##############################################
 import json
+import os
+import shutil
+from datetime import datetime
+
+import yaml
 
 from utils import print_utils
 
@@ -27,3 +32,26 @@ def change_domain(project, domain):
 
     except FileNotFoundError:
         print(print_utils.danger(f"[{project}] Cannot find configurations file ..."))
+
+
+def copy_files(project, domain):
+    print(print_utils.success(f"[{project}] start copy files ..."))
+    result_path = os.getenv("RESULT_WORKSPACE")
+    workspace_dir = os.getenv('GIT_WORKSPACE')
+    project_path = f"{workspace_dir}\\{project}"
+
+    with open('pubspec.yaml', 'r') as file:
+        pubspec_content = yaml.safe_load(file)
+    version = pubspec_content.get('version')
+
+    if version is None:
+        version = "1.0"
+
+    # copy debug apk
+    new_debug_file_path = f"{result_path}\\{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}\\{project}-{domain}"
+    # create build dir
+    os.makedirs(new_debug_file_path, 511, True)
+    app_debug_apk = f"{project_path}\\build\\app\\outputs\\flutter-apk\\app-debug.apk"
+    shutil.copy2(app_debug_apk, f"{new_debug_file_path}\\{project}-{domain}-{version}-debug.apk")
+
+    print(print_utils.warning(f"[{project}] Done copy task"))

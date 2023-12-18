@@ -27,7 +27,7 @@ def start_build_projects():
         exit(0)
 
     for project in projects:
-        build_project_module.build_project_thread(project, domain)
+        build_project_module.build(project, domain)
 
 
 def get_arg_value(option, default=None):

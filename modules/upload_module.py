@@ -9,21 +9,28 @@ import os
 
 from mega import Mega
 
+from modules import send_module
+from utils import print_utils
 
-def upload_to_mega(project):
+
+def upload_to_mega(project, domain):
     mega = Mega()
 
-    user = os.getenv('GIT_USER')
     workspace_dir = os.getenv('GIT_WORKSPACE')
     project_path = f"{workspace_dir}\\{project}"
 
-    email = os.getenv('GIT_WORKSPACE')
-    password = os.getenv('GIT_WORKSPACE')
+    email = os.getenv('MEGA_USERNAME')
+    password = os.getenv('MEGA_PASSWORD')
     m = mega.login(email, password)
 
-    # Specify the target folder on MEGA where you want to upload the file
-    mega_folder = f'{user}/{project}'
-
+    app_release_apk = f"{project_path}\\build\\app\\outputs\\flutter-apk\\app-release.apk"
     # Upload the file
-    file = m.upload(project_path, dest_path=mega_folder)
+    print(print_utils.success(f"[{project}] start upload to MEGA ..."))
+    print(print_utils.info(f"[{project}] start upload: {app_release_apk}"))
+    file = m.upload(app_release_apk, dest_filename=f"{project}-{domain}.apk")
+    file_url = m.get_upload_link(file)
+    print(print_utils.info(f"[{project}] File url :: {file_url}"))
+    print(print_utils.warning(f"[{project}] Done upload task"))
+    send_module.send_to_email(project, file_url)
+
     
