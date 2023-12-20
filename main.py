@@ -30,7 +30,7 @@ def start_build_projects():
     global_time = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
 
     for project in projects:
-        build_project_module.build_project_thread(project, domain , global_time)
+        build_project_module.build_project(project, domain, global_time)
 
 
 def get_arg_value(option, default=None):
