@@ -11,7 +11,7 @@ from modules import git_module, file_module, flutter_module, upload_module, send
 from utils import print_utils
 
 
-def build_project_thread(project, domain):
+def build_project_thread(project, domain , global_time):
     print_utils.print_msg_box(f"\n [{project}] \n Start building APKs for {project} \n",
                               color=print_utils.BColors.INFO, indent=10)
     # clone git project
@@ -31,11 +31,11 @@ def build_project_thread(project, domain):
     # flutter build appbundle
     flutter_module.build_appbundle(project)
     # copy files
-    file_module.copy_files(project, domain)
+    file_module.copy_files(project, domain, global_time)
     # upload builds to mega
-    upload_module.upload_to_mega(project, domain)
+    upload_module.upload_to_mega(project, domain, global_time)
 
 
-def build(project, domain):
-    t = Thread(target=lambda: build_project_thread(project, domain))
+def build(project, domain , global_time):
+    t = Thread(target=lambda: build_project_thread(project, domain , global_time))
     t.start()

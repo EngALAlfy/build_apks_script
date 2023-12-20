@@ -10,6 +10,8 @@ import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
+import requests
+
 from utils import print_utils
 
 
@@ -51,4 +53,19 @@ def send_to_email(project, file_url):
     message = "test build apks"
     print(print_utils.warning(f"[{project}] Done email task"))
 
-    
+
+def send_to_discord(project, domain, file_url, global_time):
+    print(print_utils.success(f"[{project}] start send to discord ..."))
+    url = os.getenv("DISCORD_WEBHOOK")
+
+    if url is None:
+        print(print_utils.danger(f"[{project}] No discord webhook"))
+        return
+
+    # Body of the message
+    body = f"⏰ **[{global_time}]** \n **[{project}]** release apk for testing ✔📱 \n **[{project}]** Domain: {domain} \n **[{project}]** APK url: {file_url} \n"
+
+    response = requests.post(url, json={"content": body})
+    print(response)
+    print(print_utils.warning(f"[{project}] Done discord task"))
+

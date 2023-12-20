@@ -7,8 +7,11 @@
 ##############################################
 import os
 
+from utils import print_utils
+
 
 def git_clone(project):
+    print(print_utils.success(f"[{project}] start git update ..."))
     use_token = os.getenv('GIT_USE_TOKEN') == "true"
 
     workspace_dir = os.getenv('GIT_WORKSPACE')
@@ -35,4 +38,5 @@ def git_clone(project):
             git_clone_command = f"git clone --single-branch --branch {branch} https://github.com/{user}/{project}.git ."
 
     os.system(git_clone_command)
+    print(print_utils.warning(f"[{project}] Done git task"))
 

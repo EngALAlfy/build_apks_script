@@ -1,9 +1,10 @@
 import os
 import sys
+from datetime import datetime
 
 from dotenv import load_dotenv
 
-from modules import build_project_module
+from modules import build_project_module, send_module
 from utils import print_utils
 
 load_dotenv()
@@ -26,8 +27,10 @@ def start_build_projects():
         print(print_utils.danger(f"Domain [{domain}] not in supported domains"))
         exit(0)
 
+    global_time = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+
     for project in projects:
-        build_project_module.build(project, domain)
+        build_project_module.build_project_thread(project, domain , global_time)
 
 
 def get_arg_value(option, default=None):
