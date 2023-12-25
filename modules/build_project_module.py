@@ -31,6 +31,11 @@ def build_project(project, domain , global_time):
     # flutter build appbundle
     flutter_module.build_appbundle(project)
     # copy files
-    file_module.copy_files(project, domain, global_time)
+    new_debug_file = file_module.copy_files(project, domain, global_time)
     # upload builds to mega
-    upload_module.upload_to_mega(project, domain, global_time)
+    file_url = upload_module.upload_to_mega(project, domain, global_time)
+    if file_url is None:
+        file_url = new_debug_file
+    # send notify top discord
+    send_module.send_to_discord(project,domain, file_url, global_time)
+

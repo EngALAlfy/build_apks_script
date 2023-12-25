@@ -55,17 +55,18 @@ def send_to_email(project, file_url):
 
 
 def send_to_discord(project, domain, file_url, global_time):
-    print(print_utils.success(f"[{project}] start send to discord ..."))
-    url = os.getenv("DISCORD_WEBHOOK")
+    is_enabled = os.getenv('MEGA_ENABLED')
+    if is_enabled == True:
+        print(print_utils.success(f"[{project}] start send to discord ..."))
+        url = os.getenv("DISCORD_WEBHOOK")
 
-    if url is None:
-        print(print_utils.danger(f"[{project}] No discord webhook"))
-        return
+        if url is None:
+            print(print_utils.danger(f"[{project}] No discord webhook"))
+            return
 
-    # Body of the message
-    body = f"⏰ **[{global_time}]** \n **[{project}]** release apk for testing ✔📱 \n **[{project}]** Domain: {domain} \n **[{project}]** APK url: {file_url} \n"
+        # Body of the message
+        body = f"⏰ **[{global_time}]** \n **[{project}]** release apk for testing ✔📱 \n **[{project}]** Domain: {domain} \n **[{project}]** APK url: {file_url} \n"
 
-    response = requests.post(url, json={"content": body})
-    print(response)
-    print(print_utils.warning(f"[{project}] Done discord task"))
+        response = requests.post(url, json={"content": body})
+        print(print_utils.warning(f"[{project}] Done discord task"))
 

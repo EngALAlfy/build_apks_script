@@ -49,9 +49,11 @@ def copy_files(project, domain , global_time):
 
     # copy debug apk
     new_debug_file_path = f"{result_path}\\{global_time}\\{project}-{domain}"
+    new_debug_file = f"{new_debug_file_path}\\{project}-{domain}-{version}-debug.apk"
     # create build dir
     os.makedirs(new_debug_file_path, 511, True)
     app_debug_apk = f"{project_path}\\build\\app\\outputs\\flutter-apk\\app-debug.apk"
-    shutil.copy2(app_debug_apk, f"{new_debug_file_path}\\{project}-{domain}-{version}-debug.apk")
+    shutil.copy2(app_debug_apk, new_debug_file)
 
     print(print_utils.warning(f"[{project}] Done copy task"))
+    return new_debug_file
