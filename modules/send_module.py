@@ -55,7 +55,7 @@ def send_to_email(project, file_url):
 
 
 def send_to_discord(project, domain, file_url, global_time):
-    is_enabled = os.getenv('MEGA_ENABLED')
+    is_enabled = os.getenv('DISCORD_ENABLED')
     if is_enabled == True:
         print(print_utils.success(f"[{project}] start send to discord ..."))
         url = os.getenv("DISCORD_WEBHOOK")
