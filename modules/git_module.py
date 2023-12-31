@@ -12,7 +12,7 @@ from utils import print_utils
 
 def git_clone(project):
     print(print_utils.success(f"[{project}] start git update ..."))
-    use_token = os.getenv('GIT_USE_TOKEN') == "true"
+    use_token = os.getenv('GIT_USE_TOKEN').lower() == "true"
 
     workspace_dir = os.getenv('GIT_WORKSPACE')
 

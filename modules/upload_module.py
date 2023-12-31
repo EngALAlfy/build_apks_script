@@ -20,8 +20,8 @@ def upload(project, domain, global_time):
 
 
 def upload_to_mega(project, domain, global_time):
-    is_enabled = os.getenv('MEGA_ENABLED')
-    if is_enabled == True:
+    is_enabled = os.getenv('MEGA_ENABLED').lower() == "true"
+    if is_enabled:
         mega = Mega()
 
         workspace_dir = os.getenv('GIT_WORKSPACE')
@@ -41,4 +41,5 @@ def upload_to_mega(project, domain, global_time):
         print(print_utils.warning(f"[{project}] Done upload task"))
     else:
         file_url = None
+        print(print_utils.danger(f"[{project}] Upload to MEGA is disabled"))
     return file_url

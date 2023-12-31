@@ -55,8 +55,8 @@ def send_to_email(project, file_url):
 
 
 def send_to_discord(project, domain, file_url, global_time):
-    is_enabled = os.getenv('DISCORD_ENABLED')
-    if is_enabled == True:
+    is_enabled = os.getenv('DISCORD_ENABLED').lower() == "true"
+    if is_enabled:
         print(print_utils.success(f"[{project}] start send to discord ..."))
         url = os.getenv("DISCORD_WEBHOOK")
 
@@ -69,4 +69,6 @@ def send_to_discord(project, domain, file_url, global_time):
 
         response = requests.post(url, json={"content": body})
         print(print_utils.warning(f"[{project}] Done discord task"))
+    else:
+        print(print_utils.danger(f"[{project}] Send to discord is disabled"))
 
