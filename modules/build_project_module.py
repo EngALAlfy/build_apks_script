@@ -29,7 +29,7 @@ def build_project(project, domain , global_time):
     # flutter build release
     flutter_module.build_release(project)
     # flutter build appbundle
-    flutter_module.build_appbundle(project)
+    # flutter_module.build_appbundle(project)
     # copy files
     new_debug_file = file_module.copy_files(project, domain, global_time)
     # upload builds to mega
