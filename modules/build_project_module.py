@@ -17,7 +17,7 @@ def build_project(project, domain , global_time):
     # clone git project
     git_module.git_clone(project)
     # change domain of build
-    # file_module.change_domain(project, domain)
+    file_module.change_domain(project, domain)
     # flutter clean
     flutter_module.clean(project)
     # flutter pub get
