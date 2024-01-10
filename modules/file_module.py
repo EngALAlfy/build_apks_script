@@ -19,7 +19,7 @@ def change_domain(project, domain):
     print(print_utils.success(f"[{project}] Change domain to [{domain}]"))
     try:
         # Load the JSON file
-        with open('assets/cfg/configurations.json', 'r') as file:
+        with open('assets/cfg/production_config.json', 'r') as file:
             data = json.load(file)
 
         # Modify the value of the "url" key
