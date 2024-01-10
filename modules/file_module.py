@@ -27,7 +27,7 @@ def change_domain(project, domain):
         data['api_base_url'] = f'https://{domain}.hurryapps.com/api/'
 
         # Save the modified data back to the file
-        with open('assets/cfg/configurations.json', 'w') as file:
+        with open('assets/cfg/production_config.json', 'w') as file:
             json.dump(data, file, indent=4)
 
     except FileNotFoundError:
