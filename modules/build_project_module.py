@@ -12,8 +12,7 @@ from utils import print_utils
 
 
 def build_project(project, domain , global_time):
-    print_utils.print_msg_box(f"\n [{project}] \n Start building APKs for {project} \n",
-                              color=print_utils.BColors.INFO, indent=10)
+    # print_utils.print_msg_box(f"\n [{project}] \n Start building APKs for {project} \n", color=print_utils.BColors.INFO, indent=10)
     # clone git project
     git_module.git_clone(project)
     # change domain of build
