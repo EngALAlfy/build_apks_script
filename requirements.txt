@@ -1,0 +1,4 @@
+PyYAML
+python-dotenv
+mega.py
+pywhatkit
