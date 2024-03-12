@@ -8,11 +8,7 @@ projects = {
 
 # Define tasks
 tasks = {
-    "clean": "Clean",
-    "build_debug": "Debug Build",
-    "build_release": "Release Build",
-    "build_aap": "App Bundle Build",
+    "debug": "Debug Build",
+    "release": "Release Build",
+    "appbundle": "App Bundle Build",
 }
-
-version = "0.0.46"
-buildNumber = 46
