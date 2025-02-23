@@ -26,7 +26,7 @@ def build_project(project, domain , global_time):
     # flutter intl generate
     flutter_module.intl_generate(project)
     # flutter build
-    build_types = os.environ['BUILD_TRYPES'].split(',')
+    build_types = os.environ['BUILD_TYPES'].split(',')
     for build_type in build_types:
         function_name = "build_" + build_type
         eval(function_name)(project)

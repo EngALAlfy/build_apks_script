@@ -4,6 +4,7 @@ projects = {
     "restaurant_manager": "Restaurant Manager",
     "BranchManager": "Branch Manager",
     "delivery_captin": "Captain App",
+    "hurryapp_onground": "OnGround App",
 }
 
 # Define tasks

@@ -264,7 +264,7 @@ def resetDefaults(self):
         if switch_btn.cget("onvalue") in project_values:
             switch_btn.select()
 
-    build_types = os.environ['BUILD_TRYPES'].split(',')
+    build_types = os.environ['BUILD_TYPES'].split(',')
     for checkbox in self.checkbox_tasks:
         if checkbox.cget("onvalue") in build_types:
             checkbox.select()
@@ -285,11 +285,11 @@ def setValues(self):
     os.environ['PROJECTS_REPOS'] = projects_string
     dotenv.set_key('.env', "PROJECTS_REPOS", projects_string)
 
-    # BUILD_TRYPES
+    # BUILD_TYPES
     tasks_values = filter(lambda x: x.get() != 0, self.checkbox_tasks)
     tasks_string = ','.join(map(lambda x: str(x.get()), tasks_values))
-    os.environ['BUILD_TRYPES'] = tasks_string
-    dotenv.set_key('.env', "BUILD_TRYPES", tasks_string)
+    os.environ['BUILD_TYPES'] = tasks_string
+    dotenv.set_key('.env', "BUILD_TYPES", tasks_string)
 
     # "version": self.version_value.get(),
     # "build_number": self.build_value.get(),
