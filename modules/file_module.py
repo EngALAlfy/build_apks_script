@@ -34,7 +34,7 @@ def change_domain(project, domain):
         print(print_utils.danger(f"[{project}] Cannot find configurations file ..."))
 
 
-def copy_files(project, domain , global_time):
+def copy_files(project, domain , global_time, build_type):
     print(print_utils.success(f"[{project}] start copy files ..."))
     result_path = os.getenv("RESULT_WORKSPACE")
     workspace_dir = os.getenv('GIT_WORKSPACE')
@@ -47,13 +47,23 @@ def copy_files(project, domain , global_time):
     if version is None:
         version = "1.0"
 
-    # copy debug apk
-    new_debug_file_path = f"{result_path}\\{global_time}\\{project}-{domain}"
-    new_debug_file = f"{new_debug_file_path}\\{project}-{domain}-{version}-debug.apk"
-    # create build dir
-    os.makedirs(new_debug_file_path, 511, True)
-    app_debug_apk = f"{project_path}\\build\\app\\outputs\\flutter-apk\\app-debug.apk"
-    shutil.copy2(app_debug_apk, new_debug_file)
+    if build_type == 'appbundle':
+        # copy app bundle
+        new_file_path = f"{result_path}\\{global_time}\\{project}-{domain}"
+        new_file = f"{new_file_path}\\{project}-{domain}-{version}-{build_type}.aap"
+        # create build dir
+        os.makedirs(new_file_path, 511, True)
+        app_file = f"{project_path}\\build\\app\\outputs\\bundle\\release\\app-release.aap"
+        shutil.copy2(app_file, new_file)
+    else:
+        # copy debug apk
+        new_file_path = f"{result_path}\\{global_time}\\{project}-{domain}"
+        extension = 'aap' if build_type == 'appbundle' else 'apk'
+        new_file = f"{new_file_path}\\{project}-{domain}-{version}-{build_type}.{extension}"
+        # create build dir
+        os.makedirs(new_file_path, 511, True)
+        app_file = f"{project_path}\\build\\app\\outputs\\flutter-apk\\app-{build_type}.apk"
+        shutil.copy2(app_file, new_file)
 
     print(print_utils.warning(f"[{project}] Done copy task"))
-    return new_debug_file
+    return new_file

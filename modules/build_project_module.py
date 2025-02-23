@@ -5,9 +5,11 @@
 #           on build project                 #
 #                                            #
 ##############################################
+import os
 from threading import Thread
 
-from modules import git_module, file_module, flutter_module, upload_module, send_module
+from modules import git_module, file_module, flutter_module, send_module
+from modules.flutter_module import build_debug, build_release, build_appbundle
 from utils import print_utils
 
 
@@ -23,18 +25,20 @@ def build_project(project, domain , global_time):
     flutter_module.pub_get(project)
     # flutter intl generate
     flutter_module.intl_generate(project)
-    # flutter build debug
-    flutter_module.build_debug(project)
-    # flutter build release
-    flutter_module.build_release(project)
-    # flutter build appbundle
-    # flutter_module.build_appbundle(project)
-    # copy files
-    new_debug_file = file_module.copy_files(project, domain, global_time)
-    # upload builds to mega
-    file_url = upload_module.upload_to_mega(project, domain, global_time)
-    if file_url is None:
-        file_url = new_debug_file
-    # send notify top discord
-    send_module.send_to_discord(project,domain, file_url, global_time)
+    # flutter build
+    build_types = os.environ['BUILD_TYPES'].split(',')
+    for build_type in build_types:
+        function_name = "build_" + build_type
+        eval(function_name)(project)
+
+        # copy files
+        new_file = file_module.copy_files(project, domain, global_time, build_type)
+
+        # upload builds to mega
+        # file_url = upload_module.upload_to_mega(project, domain, global_time)
+        file_url = None
+        if file_url is None:
+            file_url = new_file
+        # send notify top discord
+        send_module.send_to_discord(project, domain, file_url, global_time)
 

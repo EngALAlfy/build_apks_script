@@ -1,5 +1,4 @@
 .idea/
 dist/
 build/
-*.spec
 __pycache__/
