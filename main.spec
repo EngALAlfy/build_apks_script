@@ -2,8 +2,8 @@
 
 block_cipher = None
 
-# Add .env file to the datas
-datas = [('.env', '.')]
+# Removed .env to avoid bundling secrets
+datas = []
 
 a = Analysis(
     ['main.py'],

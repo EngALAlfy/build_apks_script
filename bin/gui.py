@@ -80,6 +80,10 @@ class App(customtkinter.CTk):
         self.start_btn = customtkinter.CTkButton(self.sidebar, text="🚀 START BUILD", command=self.start_build_thread, height=40, font=customtkinter.CTkFont(weight="bold"))
         self.start_btn.grid(row=2, column=0, padx=20, pady=10)
 
+        self.stop_btn = customtkinter.CTkButton(self.sidebar, text="🛑 STOP BUILD", command=self.stop_build, height=40, font=customtkinter.CTkFont(weight="bold"), fg_color="red", hover_color="darkred")
+        self.stop_btn.grid(row=3, column=0, padx=20, pady=10)
+        self.stop_btn.configure(state="disabled")
+
         self.appearance_label = customtkinter.CTkLabel(self.sidebar, text="Appearance:", anchor="w")
         self.appearance_label.grid(row=5, column=0, padx=20, pady=(10, 0))
         self.appearance_menu = customtkinter.CTkOptionMenu(self.sidebar, values=["Dark", "Light", "System"], command=lambda m: customtkinter.set_appearance_mode(m))
@@ -249,9 +253,22 @@ class App(customtkinter.CTk):
         self.save_settings()
         self.tabview.set("Console")
         self.start_btn.configure(state="disabled", text="🏗 BUILDING...")
+        self.stop_btn.configure(state="normal")
         self.status_indicator.configure(text="● BUILDING", text_color="yellow")
         
+        bin.constants.stop_requested = False
         Thread(target=self.run_build, daemon=True).start()
+
+    def stop_build(self):
+        bin.constants.stop_requested = True
+        self.stop_btn.configure(state="disabled", text="🛑 STOPPING...")
+        if bin.constants.current_process:
+            try:
+                import subprocess
+                # Force kill the process tree on Windows
+                subprocess.run(['taskkill', '/F', '/T', '/PID', str(bin.constants.current_process.pid)], capture_output=True)
+            except Exception as e:
+                print(f"Error stopping process: {e}")
 
     def run_build(self):
         try:
@@ -270,12 +287,13 @@ class App(customtkinter.CTk):
         except Exception as e:
             print(print_utils.danger(f"Build Process Error: {e}"))
             notification_utils.send_desktop_notification(
-                "Build Failed", 
-                f"An error occurred during the build process: {e}"
+                "Build Failed/Stopped", 
+                f"An error occurred or build was stopped: {e}"
             )
             tkinter.messagebox.showerror("Error", f"An error occurred: {e}")
         finally:
             self.start_btn.configure(state="normal", text="🚀 START BUILD")
+            self.stop_btn.configure(state="disabled", text="🛑 STOP BUILD")
             self.status_indicator.configure(text="● IDLE", text_color="gray")
 
 if __name__ == "__main__":

@@ -7,20 +7,37 @@
 ##############################################
 import subprocess
 from utils import print_utils, commands_utils
-
+import bin.constants
 
 def run_command(command, project, task_name):
+    if bin.constants.stop_requested:
+        raise Exception("Build stopped by user")
+    
     print(print_utils.success(f"[{project}] {task_name} ..."))
     try:
         # Use shell=True for Windows compatibility with complex commands
-        result = subprocess.run(command, shell=True, check=True, capture_output=True, text=True)
+        process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        bin.constants.current_process = process
+        
+        stdout, stderr = process.communicate()
+        
+        if bin.constants.stop_requested:
+            raise Exception("Build stopped by user")
+            
+        if process.returncode != 0:
+            print(print_utils.danger(f"[{project}] {task_name} FAILED"))
+            if stdout: print(print_utils.info(f"STDOUT:\n{stdout}"))
+            if stderr: print(print_utils.danger(f"STDERR:\n{stderr}"))
+            raise Exception(f"{task_name} failed with exit code {process.returncode}")
+            
         print(print_utils.warning(f"[{project}] Done {task_name}"))
         return True
-    except subprocess.CalledProcessError as e:
-        print(print_utils.danger(f"[{project}] {task_name} FAILED"))
-        if e.stdout: print(print_utils.info(f"STDOUT:\n{e.stdout}"))
-        if e.stderr: print(print_utils.danger(f"STDERR:\n{e.stderr}"))
-        raise Exception(f"{task_name} failed with exit code {e.returncode}")
+    except Exception as e:
+        if bin.constants.stop_requested:
+            raise Exception("Build stopped by user")
+        raise e
+    finally:
+        bin.constants.current_process = None
 
 
 def clean(project):

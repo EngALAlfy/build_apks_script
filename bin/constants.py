@@ -13,3 +13,7 @@ tasks = {
     "release": "Release Build",
     "appbundle": "App Bundle Build",
 }
+
+# State variables for build process control
+current_process = None
+stop_requested = False
