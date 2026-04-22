@@ -16,7 +16,7 @@ def run_command(command, project, task_name, ignore_errors=False):
     print(print_utils.success(f"[{project}] {task_name} ..."))
     try:
         # Use shell=True for Windows compatibility with complex commands
-        process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='replace')
         bin.constants.current_process = process
         
         stdout, stderr = process.communicate()
