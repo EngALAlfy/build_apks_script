@@ -7,15 +7,16 @@
 ##############################################
 
 class BColors:
-    HEADER = ' '
-    PRIMARY = ' '
-    INFO = ' '
-    SUCCESS = ' '
-    WARNING = ' '
-    DANGER = ' '
-    ENDC = ' '
-    BOLD = ' '
-    UNDERLINE = ' '
+    HEADER = '\033[95m'
+    PRIMARY = '\033[94m'
+    INFO = '\033[96m'
+    SUCCESS = '\033[92m'
+    WARNING = '\033[93m'
+    DANGER = '\033[91m'
+    ENDC = '\033[0m'
+    BOLD = '\033[1m'
+    UNDERLINE = '\033[4m'
+    OKGREEN = '\033[92m'
 
 
 def print_msg_box(msg, indent=1, width=None, title=None, color=BColors.BOLD):

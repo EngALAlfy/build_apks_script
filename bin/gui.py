@@ -10,289 +10,275 @@ from utils import print_utils
 from modules import build_project_module
 import dotenv
 from threading import Thread
+import re
+from utils import notification_utils
 
-customtkinter.set_appearance_mode("System")  # Modes: "System" (standard), "Dark", "Light"
-customtkinter.set_default_color_theme("blue")  # Themes: "blue" (standard), "green", "dark-blue"
-
+customtkinter.set_appearance_mode("Dark")
+customtkinter.set_default_color_theme("blue")
 
 class StdoutRedirector:
     def __init__(self, textbox):
         self.textbox = textbox
 
     def write(self, message):
-        self.textbox.insert(tkinter.END, message)
+        # Remove ANSI escape sequences for cleaner UI display
+        ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+        clean_message = ansi_escape.sub('', message)
+        
+        self.textbox.configure(state="normal")
+        self.textbox.insert(tkinter.END, clean_message)
         self.textbox.see(tkinter.END)
+        self.textbox.configure(state="disabled")
 
     def flush(self):
-        # Flush method is needed for compatibility
         pass
-
 
 class App(customtkinter.CTk):
     def __init__(self):
         super().__init__()
 
-        configureTkinter(self=self)
-        buildSideBar(self=self)
-        browseBar(self=self)
-        buildProgressLogs(self=self)
-        buildVersionConfiguration(self=self)
-        buildGitConfiguration(self=self)
-        buildProjectSwitcher(self=self)
-        buildTasksCheckBoxes(self=self)
+        # Window configuration
+        self.title("APK Professional Builder v2.0")
+        self.geometry("1400x700")
 
-        resetDefaults(self=self)
+        # Layout configuration
+        self.grid_columnconfigure(1, weight=1)
+        self.grid_rowconfigure(0, weight=1)
 
-    def show_logs_command(self):
-        if not self.logs_textbox.grid_info():
-            self.logs_textbox.grid(row=1, column=1, padx=(20, 0), pady=(20, 0), sticky="nsew")
-            self.show_logs_button.configure(text="Hide Logs")
-        else:
-            self.logs_textbox.grid_remove()
-            self.show_logs_button.configure(text="Show Logs")
+        # Initialize variables
+        self.init_variables()
 
-    def browse_button(self):
-        file_path = filedialog.askdirectory(initialdir=self.base_path.get(), title="Select Base Directory")
-        if file_path:
-            self.base_path.set(file_path)
-            os.environ['GIT_WORKSPACE'] = self.base_path.get()
-            dotenv.set_key('.env', "GIT_WORKSPACE", self.base_path.get())
+        # Build UI
+        self.create_sidebar()
+        self.create_main_content()
+        
+        # Load defaults
+        self.load_settings()
 
-    def browse_button2(self):
-        file_path = filedialog.askdirectory(initialdir=self.save_path.get(), title="Select Save Directory")
-        if file_path:
-            self.save_path.set(file_path)
-            os.environ['RESULT_WORKSPACE'] = self.save_path.get()
-            dotenv.set_key('.env', "RESULT_WORKSPACE", self.save_path.get())
+    def init_variables(self):
+        self.git_workspace = tkinter.StringVar(value=os.getenv('GIT_WORKSPACE', ''))
+        self.result_workspace = tkinter.StringVar(value=os.getenv('RESULT_WORKSPACE', ''))
+        self.git_branch = tkinter.StringVar(value=os.getenv('GIT_BRANCH', 'main'))
+        
+        # Distribution Toggles
+        self.mega_enabled = tkinter.BooleanVar(value=os.getenv('MEGA_ENABLED', 'false').lower() == "true")
+        self.ftp_enabled = tkinter.BooleanVar(value=os.getenv('FTP_ENABLED', 'false').lower() == "true")
+        self.discord_enabled = tkinter.BooleanVar(value=os.getenv('DISCORD_ENABLED', 'false').lower() == "true")
+        self.email_enabled = tkinter.BooleanVar(value=os.getenv('EMAIL_ENABLED', 'false').lower() == "true")
 
-    def build(self):
-        t = Thread(target=lambda: self.buildProjects())
-        t.start()
+    def create_sidebar(self):
+        self.sidebar = customtkinter.CTkFrame(self, width=200, corner_radius=0)
+        self.sidebar.grid(row=0, column=0, sticky="nsew")
+        self.sidebar.grid_rowconfigure(4, weight=1)
 
-    def buildProjects(self):
-        setValues(self)
+        self.logo_label = customtkinter.CTkLabel(self.sidebar, text="APK BUILDER", font=customtkinter.CTkFont(size=22, weight="bold"))
+        self.logo_label.grid(row=0, column=0, padx=20, pady=(20, 10))
+
+        self.status_indicator = customtkinter.CTkLabel(self.sidebar, text="● IDLE", text_color="gray", font=customtkinter.CTkFont(size=12))
+        self.status_indicator.grid(row=1, column=0, padx=20, pady=(0, 20))
+
+        self.start_btn = customtkinter.CTkButton(self.sidebar, text="🚀 START BUILD", command=self.start_build_thread, height=40, font=customtkinter.CTkFont(weight="bold"))
+        self.start_btn.grid(row=2, column=0, padx=20, pady=10)
+
+        self.appearance_label = customtkinter.CTkLabel(self.sidebar, text="Appearance:", anchor="w")
+        self.appearance_label.grid(row=5, column=0, padx=20, pady=(10, 0))
+        self.appearance_menu = customtkinter.CTkOptionMenu(self.sidebar, values=["Dark", "Light", "System"], command=lambda m: customtkinter.set_appearance_mode(m))
+        self.appearance_menu.grid(row=6, column=0, padx=20, pady=(10, 20))
+
+    def create_main_content(self):
+        self.tabview = customtkinter.CTkTabview(self)
+        self.tabview.grid(row=0, column=1, padx=20, pady=20, sticky="nsew")
+        
+        self.tabview.add("Projects")
+        self.tabview.add("Build Settings")
+        self.tabview.add("Distribution")
+        self.tabview.add("Console")
+
+        self.setup_projects_tab()
+        self.setup_build_settings_tab()
+        self.setup_distribution_tab()
+        self.setup_console_tab()
+
+    def setup_projects_tab(self):
+        tab = self.tabview.tab("Projects")
+        tab.grid_columnconfigure(0, weight=1)
+        tab.grid_rowconfigure(1, weight=1)
+        
+        customtkinter.CTkLabel(tab, text="Select Projects to Build", font=customtkinter.CTkFont(size=16, weight="bold")).grid(row=0, column=0, padx=20, pady=10, sticky="w")
+        
+        self.project_switches = {}
+        scroll_frame = customtkinter.CTkScrollableFrame(tab)
+        scroll_frame.grid(row=1, column=0, padx=20, pady=(0, 20), sticky="nsew")
+        scroll_frame.grid_columnconfigure(0, weight=1)
+        
+        for i, (key, name) in enumerate(bin.constants.projects.items()):
+            switch = customtkinter.CTkSwitch(scroll_frame, text=name)
+            switch.grid(row=i, column=0, padx=10, pady=10, sticky="w")
+            self.project_switches[key] = switch
+
+    def setup_build_settings_tab(self):
+        tab = self.tabview.tab("Build Settings")
+        tab.grid_columnconfigure(1, weight=1)
+
+        # Workspaces
+        customtkinter.CTkLabel(tab, text="Workspaces", font=customtkinter.CTkFont(weight="bold")).grid(row=0, column=0, columnspan=2, padx=20, pady=(10, 5), sticky="w")
+        
+        self.create_path_row(tab, "Git Workspace", self.git_workspace, 1)
+        self.create_path_row(tab, "Output Dir", self.result_workspace, 2)
+
+        # Branch & Domain
+        customtkinter.CTkLabel(tab, text="Git & Domain", font=customtkinter.CTkFont(weight="bold")).grid(row=3, column=0, columnspan=2, padx=20, pady=(20, 5), sticky="w")
+        
+        customtkinter.CTkLabel(tab, text="Branch:").grid(row=4, column=0, padx=20, pady=5, sticky="e")
+        self.branch_entry = customtkinter.CTkEntry(tab, textvariable=self.git_branch)
+        self.branch_entry.grid(row=4, column=1, padx=20, pady=5, sticky="ew")
+
+        # Build Types
+        customtkinter.CTkLabel(tab, text="Build Types", font=customtkinter.CTkFont(weight="bold")).grid(row=6, column=0, columnspan=2, padx=20, pady=(20, 5), sticky="w")
+        self.type_checks = {}
+        check_frame = customtkinter.CTkFrame(tab, fg_color="transparent")
+        check_frame.grid(row=7, column=0, columnspan=2, padx=20, pady=5, sticky="w")
+        
+        for i, (key, name) in enumerate(bin.constants.tasks.items()):
+            check = customtkinter.CTkCheckBox(check_frame, text=name)
+            check.grid(row=0, column=i, padx=10, pady=5)
+            self.type_checks[key] = check
+
+    def setup_distribution_tab(self):
+        tab = self.tabview.tab("Distribution")
+        tab.grid_columnconfigure(1, weight=1)
+
+        # Services
+        services = [
+            ("MEGA.nz", self.mega_enabled, [("MEGA_USERNAME", "User"), ("MEGA_PASSWORD", "Pass")]),
+            ("FTP Server", self.ftp_enabled, [("FTP_HOST", "Host"), ("FTP_PASS", "Pass"), ("FTP_PATH", "Path"), ("FTP_BASE_URL", "Base URL")]),
+            ("Discord", self.discord_enabled, [("DISCORD_WEBHOOK", "Webhook URL")]),
+            ("Email", self.email_enabled, [("EMAILS", "Recipients"), ("SMTP_HOST", "SMTP Host"), ("SMTP_PORT", "Port"), ("EMAIL_USER", "User"), ("EMAIL_PASSWORD", "Pass")])
+        ]
+
+        for i, (name, var, fields) in enumerate(services):
+            frame = customtkinter.CTkFrame(tab)
+            frame.grid(row=i, column=0, columnspan=2, padx=20, pady=10, sticky="ew")
+            frame.grid_columnconfigure(1, weight=1)
+            
+            customtkinter.CTkSwitch(frame, text=name, variable=var, font=customtkinter.CTkFont(weight="bold")).grid(row=0, column=0, padx=10, pady=10, sticky="w")
+            
+            field_frame = customtkinter.CTkFrame(frame, fg_color="transparent")
+            field_frame.grid(row=1, column=0, columnspan=3, padx=10, pady=(0, 10), sticky="ew")
+            field_frame.grid_columnconfigure(list(range(len(fields)*2)), weight=1)
+
+            for j, (env_key, lbl) in enumerate(fields):
+                val = os.getenv(env_key, '')
+                customtkinter.CTkLabel(field_frame, text=f"{lbl}:").grid(row=0, column=j*2, padx=5, sticky="e")
+                entry = customtkinter.CTkEntry(field_frame, placeholder_text=f"Enter {lbl}")
+                entry.insert(0, val)
+                entry.grid(row=0, column=j*2+1, padx=5, pady=5, sticky="ew")
+                setattr(self, f"dist_entry_{env_key}", entry)
+
+    def setup_console_tab(self):
+        tab = self.tabview.tab("Console")
+        tab.grid_columnconfigure(0, weight=1)
+        tab.grid_rowconfigure(0, weight=1)
+
+        self.console = customtkinter.CTkTextbox(tab, font=customtkinter.CTkFont(family="Consolas", size=12))
+        self.console.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
+        self.console.configure(state="disabled")
+
+        sys.stdout = StdoutRedirector(self.console)
+        sys.stderr = StdoutRedirector(self.console)
+
+    def create_path_row(self, master, label, var, row):
+        customtkinter.CTkLabel(master, text=f"{label}:").grid(row=row, column=0, padx=20, pady=5, sticky="e")
+        entry = customtkinter.CTkEntry(master, textvariable=var)
+        entry.grid(row=row, column=1, padx=(20, 0), pady=5, sticky="ew")
+        
+        btn = customtkinter.CTkButton(master, text="Browse", width=80, command=lambda: self.browse_path(var))
+        btn.grid(row=row, column=2, padx=20, pady=5)
+
+    def browse_path(self, var):
+        path = filedialog.askdirectory()
+        if path:
+            var.set(path)
+
+    def load_settings(self):
+        # Load project selections
+        saved_projects = os.getenv('PROJECTS_REPOS', '').split(',')
+        for key, switch in self.project_switches.items():
+            if key in saved_projects:
+                switch.select()
+
+        # Load build types
+        saved_types = os.getenv('BUILD_TYPES', '').split(',')
+        for key, check in self.type_checks.items():
+            if key in saved_types:
+                check.select()
+
+    def save_settings(self):
+        # Update .env and os.environ
+        settings = {
+            'GIT_WORKSPACE': self.git_workspace.get(),
+            'RESULT_WORKSPACE': self.result_workspace.get(),
+            'GIT_BRANCH': self.git_branch.get(),
+            'MEGA_ENABLED': str(self.mega_enabled.get()).lower(),
+            'FTP_ENABLED': str(self.ftp_enabled.get()).lower(),
+            'DISCORD_ENABLED': str(self.discord_enabled.get()).lower(),
+            'EMAIL_ENABLED': str(self.email_enabled.get()).lower(),
+        }
+
+        # Project selection
+        active_projects = [k for k, s in self.project_switches.items() if s.get()]
+        settings['PROJECTS_REPOS'] = ','.join(active_projects)
+
+        # Build types
+        active_types = [k for k, c in self.type_checks.items() if c.get()]
+        settings['BUILD_TYPES'] = ','.join(active_types)
+
+        # Extra distribution settings from entries
+        for env_key in ["MEGA_USERNAME", "MEGA_PASSWORD", "FTP_HOST", "FTP_PASS", "FTP_PATH", "FTP_BASE_URL", "DISCORD_WEBHOOK", "EMAILS", "SMTP_HOST", "SMTP_PORT", "EMAIL_USER", "EMAIL_PASSWORD"]:
+            if hasattr(self, f"dist_entry_{env_key}"):
+                val = getattr(self, f"dist_entry_{env_key}").get()
+                if val: settings[env_key] = val
+
+        for k, v in settings.items():
+            os.environ[k] = v
+            dotenv.set_key('.env', k, v)
+        
+        print(print_utils.info("Settings saved successfully."))
+
+    def start_build_thread(self):
+        self.save_settings()
+        self.tabview.set("Console")
+        self.start_btn.configure(state="disabled", text="🏗 BUILDING...")
+        self.status_indicator.configure(text="● BUILDING", text_color="yellow")
+        
+        Thread(target=self.run_build, daemon=True).start()
+
+    def run_build(self):
         try:
-            projects = os.getenv('PROJECTS_REPOS')
-            supported_domains = os.getenv('SUPPORTED_DOMAINS')
-            domain = os.getenv('DEFAULT_DOMAIN')
-
-            # Split the string into an array using the comma as a delimiter
-            if projects:
-                projects = projects.split(',')
-
-            if supported_domains:
-                supported_domains = supported_domains.split(',')
-
-            if domain not in supported_domains:
-                print(print_utils.danger(f"Domain [{domain}] not in supported domains"))
-                exit(0)
-
+            projects = os.getenv('PROJECTS_REPOS', '').split(',')
             global_time = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
 
             for project in projects:
-                build_project_module.build_project(project, domain, global_time)
-        except KeyboardInterrupt:
-            print(print_utils.danger(f"Script ended manually with CTRL + C"))
-            raise SystemExit
-        except Exception as err:
-            print(print_utils.danger(f"Error occur : {err}"))
+                if not project: continue
+                build_project_module.build_project(project, global_time)
+            
+            notification_utils.send_desktop_notification(
+                "Build Successful", 
+                f"All projects ({len([p for p in projects if p])}) have been built successfully!"
+            )
+            tkinter.messagebox.showinfo("Success", "All builds completed successfully!")
+        except Exception as e:
+            print(print_utils.danger(f"Build Process Error: {e}"))
+            notification_utils.send_desktop_notification(
+                "Build Failed", 
+                f"An error occurred during the build process: {e}"
+            )
+            tkinter.messagebox.showerror("Error", f"An error occurred: {e}")
+        finally:
+            self.start_btn.configure(state="normal", text="🚀 START BUILD")
+            self.status_indicator.configure(text="● IDLE", text_color="gray")
 
-
-def configureTkinter(self):
-    # configure window
-    self.title("APK Builder")
-    self.geometry(f"{1100}x{580}")
-
-    # configure grid layout (4x4)
-    self.grid_columnconfigure(1, weight=1)
-    self.grid_columnconfigure((2, 3), weight=0)
-    self.grid_rowconfigure((0, 1, 2), weight=1)
-
-
-def buildSideBar(self):
-    # Sidebar with appearance mode
-    self.sidebar_frame = customtkinter.CTkFrame(self, width=140, corner_radius=0)
-    self.sidebar_frame.grid(row=0, column=0, rowspan=4, sticky="nsew")
-    self.sidebar_frame.grid_rowconfigure(4, weight=1)
-    self.logo_label = customtkinter.CTkLabel(self.sidebar_frame, text="APK Builder",
-                                             font=customtkinter.CTkFont(size=20, weight="bold"))
-    self.logo_label.grid(row=0, column=0, padx=20, pady=(20, 10))
-    self.start_button = customtkinter.CTkButton(self.sidebar_frame, command=lambda: self.build(),
-                                                text="Start Building")
-    self.start_button.grid(row=3, column=0, padx=20, pady=(50, 0))
-    self.appearance_mode_label = customtkinter.CTkLabel(self.sidebar_frame, text="Appearance Mode:", anchor="w")
-    self.appearance_mode_label.grid(row=5, column=0, padx=20, pady=(10, 0))
-    self.appearance_mode_optionemenu = customtkinter.CTkOptionMenu(self.sidebar_frame,
-                                                                   values=["Light", "Dark", "System"],
-                                                                   command=change_appearance_mode_event)
-    self.appearance_mode_optionemenu.grid(row=6, column=0, padx=20, pady=(10, 10))
-
-
-def browseBar(self):
-    # Browse saved directory
-    self.base_path = tkinter.StringVar(value=os.environ['GIT_WORKSPACE'])
-    self.base_entry = customtkinter.CTkEntry(self, textvariable=self.base_path)
-    self.base_entry.grid(row=3, column=1, columnspan=2, padx=(20, 0), pady=5, sticky="nsew")
-
-    self.save_path = tkinter.StringVar(value=os.environ['RESULT_WORKSPACE'])
-    self.save_entry = customtkinter.CTkEntry(self, textvariable=self.save_path)
-    self.save_entry.grid(row=4, column=1, columnspan=2, padx=(20, 0), pady=5, sticky="nsew")
-
-    self.browse_button_1 = customtkinter.CTkButton(master=self, text="Browse Apps Directory",
-                                                   command=self.browse_button,
-                                                   fg_color="transparent", border_width=2,
-                                                   text_color=("gray10", "#DCE4EE"))
-    self.browse_button_1.grid(row=3, column=3, padx=(20, 20), pady=5, sticky="nsew")
-
-    self.browse_button_2 = customtkinter.CTkButton(master=self, text="Browse Save Directory",
-                                                   command=self.browse_button2,
-                                                   fg_color="transparent", border_width=2,
-                                                   text_color=("gray10", "#DCE4EE"))
-    self.browse_button_2.grid(row=4, column=3, padx=(20, 20), pady=5, sticky="nsew")
-
-
-def buildProgressLogs(self):
-    # Progress Events
-    self.slider_progressbar_frame = customtkinter.CTkFrame(self, fg_color="transparent")
-    self.slider_progressbar_frame.grid(row=0, column=1, padx=(20, 0), pady=(20, 0), sticky="nsew")
-    self.slider_progressbar_frame.grid_columnconfigure(0, weight=1)
-    self.slider_progressbar_frame.grid_rowconfigure(4, weight=1)
-    self.progress_labels = []
-    self.progress_status_labels = []
-    self.progressbar_sliders = []
-    for idx, (key, value) in enumerate(bin.constants.tasks.items()):
-        progress = customtkinter.CTkLabel(self.slider_progressbar_frame, text=f"{value}",
-                                          font=customtkinter.CTkFont(size=14, weight="bold"))
-        progress.grid(row=idx + 1, column=0, padx=(10, 5), pady=2, sticky="w")
-        self.progress_labels.append(progress)
-        progress_status = customtkinter.CTkLabel(self.slider_progressbar_frame, text="⏳",
-                                                 font=customtkinter.CTkFont(size=14, weight="bold"))
-        progress_status.grid(row=idx + 1, column=3, padx=(5, 10), pady=(2, 2), sticky="w")
-        self.progress_status_labels.append(progress_status)
-        progressbar = customtkinter.CTkProgressBar(self.slider_progressbar_frame)
-        self.progressbar_sliders.append(progressbar)
-    self.show_logs_button = customtkinter.CTkButton(self.slider_progressbar_frame, command=self.show_logs_command,
-                                                    text="Show Logs")
-    self.show_logs_button.grid(row=5, column=0, padx=20, pady=(10, 0), sticky="w")
-
-    # Logs
-    self.logs_textbox = customtkinter.CTkTextbox(self, width=250)
-
-    # Redirect stdout and stderr
-    sys.stdout = StdoutRedirector(self.logs_textbox)
-    sys.stderr = StdoutRedirector(self.logs_textbox)
-
-
-def buildVersionConfiguration(self):
-    # Configuration frame
-    self.configuration_frame = customtkinter.CTkFrame(self, width=250)
-    self.configuration_frame.grid(row=0, column=2, padx=(20, 0), pady=(20, 0), sticky="nsew")
-    self.configuration_label = customtkinter.CTkLabel(self.configuration_frame, text="Domain",
-                                                      font=customtkinter.CTkFont(size=14, weight="bold"))
-    self.configuration_label.grid(row=1, column=0, padx=(10, 5), pady=(10, 10), sticky="w")
-    self.combobox_1 = customtkinter.CTkComboBox(self.configuration_frame,
-                                                values=os.environ['SUPPORTED_DOMAINS'].split(','))
-    self.combobox_1.grid(row=1, column=1, padx=(5, 10), pady=(10, 10), sticky="w")
-    # self.version_label = customtkinter.CTkLabel(self.configuration_frame, text="App Version",
-    #                                             font=customtkinter.CTkFont(size=14, weight="bold"))
-    # self.version_label.grid(row=2, column=0, padx=(10, 5), pady=(10, 10), sticky="w")
-    # self.version_value = customtkinter.StringVar()
-    # self.version_value.set(f"{version}")
-    # self.app_version_entry = customtkinter.CTkEntry(self.configuration_frame, textvariable=self.version_value)
-    # self.app_version_entry.grid(row=2, column=1, padx=(5, 10), pady=(10, 10), sticky="w")
-    # self.build_label = customtkinter.CTkLabel(self.configuration_frame, text="Build Number",
-    #                                           font=customtkinter.CTkFont(size=14, weight="bold"))
-    # self.build_label.grid(row=3, column=0, padx=(10, 5), pady=(10, 10), sticky="w")
-    # self.build_value = customtkinter.StringVar()
-    # self.build_value.set(f"{buildNumber}")
-    # self.build_number_entry = customtkinter.CTkEntry(self.configuration_frame, textvariable=self.build_value)
-    # self.build_number_entry.grid(row=3, column=1, padx=(5, 10), pady=(10, 10), sticky="w")
-
-
-def buildGitConfiguration(self):
-    # Git Branch Radio
-    self.radiobutton_frame = customtkinter.CTkFrame(self)
-    self.radiobutton_frame.grid(row=0, column=3, padx=(20, 20), pady=(20, 0), sticky="nsew")
-    self.radio_var = tkinter.StringVar(value=os.environ['GIT_BRANCH'])
-    self.label_radio_group = customtkinter.CTkLabel(master=self.radiobutton_frame, text="Git Branch:")
-    self.label_radio_group.grid(row=0, column=2, columnspan=1, padx=10, pady=10, sticky="w")
-    self.radio_button_1 = customtkinter.CTkRadioButton(master=self.radiobutton_frame, variable=self.radio_var,
-                                                       value="main", text="main")
-    self.radio_button_1.grid(row=1, column=2, pady=10, padx=20, sticky="w")
-    self.radio_button_2 = customtkinter.CTkRadioButton(master=self.radiobutton_frame, variable=self.radio_var,
-                                                       value="development", text="development")
-    self.radio_button_2.grid(row=2, column=2, pady=10, padx=20, sticky="w")
-
-
-def buildProjectSwitcher(self):
-    # Project switches
-    self.scrollable_frame = customtkinter.CTkScrollableFrame(self, label_text="Projects")
-    self.scrollable_frame.grid(row=1, column=2, padx=(20, 0), pady=(20, 0), sticky="nsew")
-    self.scrollable_frame.grid_columnconfigure(0, weight=1)
-    self.scrollable_frame_switches = []
-    for idx, (key, value) in enumerate(bin.constants.projects.items()):
-        switch = customtkinter.CTkSwitch(master=self.scrollable_frame, text=f"{value}", onvalue=f"{key}")
-        switch.grid(row=idx, column=0, padx=10, pady=(0, 20), sticky='w')
-        self.scrollable_frame_switches.append(switch)
-
-
-def buildTasksCheckBoxes(self):
-    # Tasks checkboxes
-    self.checkbox_slider_frame = customtkinter.CTkFrame(self)
-    self.checkbox_slider_frame.grid(row=1, column=3, padx=(20, 20), pady=(20, 0), sticky="nsew")
-    self.checkbox_tasks = []
-    for idx, (key, value) in enumerate(bin.constants.tasks.items()):
-        checkbox = customtkinter.CTkCheckBox(master=self.checkbox_slider_frame, text=f"{value}", onvalue=f"{key}")
-        checkbox.grid(row=idx, column=0, pady=(20, 0), padx=20, sticky="w")
-        self.checkbox_tasks.append(checkbox)
-
-
-def resetDefaults(self):
-    # set default values
-    self.appearance_mode_optionemenu.set("Dark")
-    self.combobox_1.set(os.environ['DEFAULT_DOMAIN'])
-    self.logs_textbox.insert("0.0", "Start Logging:\n\n")
-
-    # Define tag configurations for colors
-    self.logs_textbox.tag_config("normal", foreground="white")
-    self.logs_textbox.tag_config("red", foreground="red")
-    self.logs_textbox.tag_config("green", foreground="green")
-    self.logs_textbox.tag_config("blue", foreground="blue")
-
-    project_values = os.environ['PROJECTS_REPOS'].split(',')
-    for switch_btn in self.scrollable_frame_switches:
-        if switch_btn.cget("onvalue") in project_values:
-            switch_btn.select()
-
-    build_types = os.environ['BUILD_TYPES'].split(',')
-    for checkbox in self.checkbox_tasks:
-        if checkbox.cget("onvalue") in build_types:
-            checkbox.select()
-
-
-def setValues(self):
-    # DEFAULT_DOMAIN
-    os.environ['DEFAULT_DOMAIN'] = self.combobox_1.get()
-    dotenv.set_key('.env', "DEFAULT_DOMAIN", self.combobox_1.get())
-
-    # GIT_BRANCH
-    os.environ['GIT_BRANCH'] = self.radio_var.get()
-    dotenv.set_key('.env', "GIT_BRANCH", self.radio_var.get())
-
-    # PROJECTS_REPOS
-    projects_values = filter(lambda x: x.get() != 0, self.scrollable_frame_switches)
-    projects_string = ','.join(map(lambda x: str(x.get()), projects_values))
-    os.environ['PROJECTS_REPOS'] = projects_string
-    dotenv.set_key('.env', "PROJECTS_REPOS", projects_string)
-
-    # BUILD_TYPES
-    tasks_values = filter(lambda x: x.get() != 0, self.checkbox_tasks)
-    tasks_string = ','.join(map(lambda x: str(x.get()), tasks_values))
-    os.environ['BUILD_TYPES'] = tasks_string
-    dotenv.set_key('.env', "BUILD_TYPES", tasks_string)
-
-    # "version": self.version_value.get(),
-    # "build_number": self.build_value.get(),
-
-def change_appearance_mode_event(new_appearance_mode: str):
-    customtkinter.set_appearance_mode(new_appearance_mode)
+if __name__ == "__main__":
+    dotenv.load_dotenv()
+    app = App()
+    app.mainloop()

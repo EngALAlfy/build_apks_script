@@ -15,60 +15,93 @@ import requests
 from utils import print_utils
 
 
-def send_to_email(project, file_url):
-    print(print_utils.success(f"[{project}] start send to email ..."))
-    emails = os.getenv("EMAILS")
-
-    if emails:
-        emails = emails.split(',')
-    else:
-        print(print_utils.danger(f"[{project}] No emails"))
+def send_to_email(project, file_urls, global_time):
+    if os.getenv('EMAIL_ENABLED', 'false').lower() != "true":
+        print(print_utils.danger(f"[{project}] Email notifications disabled"))
         return
 
-    # Email account information
+    print(print_utils.success(f"[{project}] Sending email notification ..."))
+    emails = os.getenv("EMAILS")
+
+    if not emails:
+        print(print_utils.danger(f"[{project}] No email recipients found"))
+        return
+    
+    emails = emails.split(',')
     sender_email = os.getenv("EMAIL_USER")
     sender_password = os.getenv("EMAIL_PASSWORD")
     smtp_host = os.getenv("SMTP_HOST")
+    smtp_port = int(os.getenv("SMTP_PORT", 587))
 
-    # Create the MIME object
-    message = MIMEMultipart()
-    message['From'] = sender_email.split("@").pop(0)
-    message['Subject'] = f"{project} APKs"
+    if not all([sender_email, sender_password, smtp_host]):
+        print(print_utils.danger(f"[{project}] Email configuration incomplete"))
+        return
 
-    # Body of the email
-    body = f"This is email with {project} release apk for testing \n APK url: {file_url}"
-    message.attach(MIMEText(body, 'plain'))
+    try:
+        # Create the MIME object
+        message = MIMEMultipart()
+        message['From'] = f"APK Builder <{sender_email}>"
+        message['Subject'] = f"🚀 {project} - New Build Available ({global_time})"
 
-    # Establish a connection with the SMTP server
-    with smtplib.SMTP(smtp_host, 587) as server:
-        server.starttls()  # Use TLS for security
-        server.login(sender_email, sender_password)
+        # Body of the email
+        links_text = "\n".join([f"- {k.upper()}: {v}" for k, v in file_urls.items()])
+        body = f"""
+Hello,
 
-        for email in emails:
-            message['To'] = email
-            # Send the email
-            server.sendmail(sender_email, email, message.as_string())
+A new build of {project} has been completed successfully.
+
+Build Details:
+- Project: {project}
+- Time: {global_time}
+
+Download Links:
+{links_text}
+
+Regards,
+APK Builder System
+"""
+        message.attach(MIMEText(body, 'plain'))
+
+        # Establish a connection with the SMTP server
+        with smtplib.SMTP(smtp_host, smtp_port) as server:
+            server.starttls()
+            server.login(sender_email, sender_password)
+            for email in emails:
+                message['To'] = email.strip()
+                server.sendmail(sender_email, email.strip(), message.as_string())
+
+        print(print_utils.warning(f"[{project}] Email notification sent"))
+    except Exception as e:
+        print(print_utils.danger(f"[{project}] Email failed: {e}"))
 
 
-    message = "test build apks"
-    print(print_utils.warning(f"[{project}] Done email task"))
+def send_to_discord(project, file_urls, global_time):
+    if os.getenv('DISCORD_ENABLED', 'false').lower() != "true":
+        print(print_utils.danger(f"[{project}] Discord notifications disabled"))
+        return
 
+    print(print_utils.success(f"[{project}] Sending Discord notification ..."))
+    url = os.getenv("DISCORD_WEBHOOK")
 
-def send_to_discord(project, domain, file_url, global_time):
-    is_enabled = os.getenv('DISCORD_ENABLED').lower() == "true"
-    if is_enabled:
-        print(print_utils.success(f"[{project}] start send to discord ..."))
-        url = os.getenv("DISCORD_WEBHOOK")
+    if not url:
+        print(print_utils.danger(f"[{project}] No Discord webhook found"))
+        return
 
-        if url is None:
-            print(print_utils.danger(f"[{project}] No discord webhook"))
-            return
-
+    try:
+        links_text = "\n".join([f"🔗 **{k.upper()}**: {v}" for k, v in file_urls.items()])
+        
         # Body of the message
-        body = f"⏰ **[{global_time}]** \n **[{project}]** release apk for testing ✔📱 \n **[{project}]** Domain: {domain} \n **[{project}]** APK url: {file_url} \n"
+        content = (
+            f"🚀 **New Build Alert: {project}**\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"📅 **Time**: `{global_time}`\n\n"
+            f"📥 **Download Links**:\n"
+            f"{links_text}\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━"
+        )
 
-        response = requests.post(url, json={"content": body})
-        print(print_utils.warning(f"[{project}] Done discord task"))
-    else:
-        print(print_utils.danger(f"[{project}] Send to discord is disabled"))
+        requests.post(url, json={"content": content})
+        print(print_utils.warning(f"[{project}] Discord notification sent"))
+    except Exception as e:
+        print(print_utils.danger(f"[{project}] Discord failed: {e}"))
 
