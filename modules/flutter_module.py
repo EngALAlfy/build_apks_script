@@ -9,7 +9,7 @@ import subprocess
 from utils import print_utils, commands_utils
 import bin.constants
 
-def run_command(command, project, task_name):
+def run_command(command, project, task_name, ignore_errors=False):
     if bin.constants.stop_requested:
         raise Exception("Build stopped by user")
     
@@ -25,6 +25,9 @@ def run_command(command, project, task_name):
             raise Exception("Build stopped by user")
             
         if process.returncode != 0:
+            if ignore_errors:
+                print(print_utils.warning(f"[{project}] {task_name} FAILED but allowed to fail. Skipping..."))
+                return False
             print(print_utils.danger(f"[{project}] {task_name} FAILED"))
             if stdout: print(print_utils.info(f"STDOUT:\n{stdout}"))
             if stderr: print(print_utils.danger(f"STDERR:\n{stderr}"))
@@ -49,7 +52,7 @@ def pub_get(project):
 
 
 def intl_generate(project):
-    run_command(commands_utils.FLUTTER_INTL_GENERATE_COMMAND, project, "flutter intl generate")
+    run_command(commands_utils.FLUTTER_INTL_GENERATE_COMMAND, project, "flutter intl generate", ignore_errors=True)
 
 
 def build_debug(project):
