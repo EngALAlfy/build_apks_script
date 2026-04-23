@@ -11,7 +11,7 @@ from modules import build_project_module
 import dotenv
 from threading import Thread
 import re
-from utils import notification_utils
+from utils import notification_utils, history_utils
 
 customtkinter.set_appearance_mode("Dark")
 customtkinter.set_default_color_theme("blue")
@@ -124,11 +124,13 @@ class App(customtkinter.CTk):
         self.tabview.add("Projects")
         self.tabview.add("Build Settings")
         self.tabview.add("Distribution")
+        self.tabview.add("History")
         self.tabview.add("Console")
 
         self.setup_projects_tab()
         self.setup_build_settings_tab()
         self.setup_distribution_tab()
+        self.setup_history_tab()
         self.setup_console_tab()
 
     def setup_projects_tab(self):
@@ -206,6 +208,100 @@ class App(customtkinter.CTk):
                 entry.insert(0, val)
                 entry.grid(row=0, column=j*2+1, padx=5, pady=5, sticky="ew")
                 setattr(self, f"dist_entry_{env_key}", entry)
+
+    def setup_history_tab(self):
+        tab = self.tabview.tab("History")
+        tab.grid_columnconfigure(0, weight=1)
+        tab.grid_rowconfigure(1, weight=1)
+        
+        header_frame = customtkinter.CTkFrame(tab, fg_color="transparent")
+        header_frame.grid(row=0, column=0, padx=20, pady=10, sticky="ew")
+        
+        customtkinter.CTkLabel(header_frame, text="Recent Build History", font=customtkinter.CTkFont(size=16, weight="bold")).pack(side="left")
+        customtkinter.CTkButton(header_frame, text="🔄 Refresh", width=100, command=self.refresh_history).pack(side="right")
+        
+        self.history_frame = customtkinter.CTkScrollableFrame(tab)
+        self.history_frame.grid(row=1, column=0, padx=20, pady=(0, 20), sticky="nsew")
+        self.history_frame.grid_columnconfigure(0, weight=1)
+        
+        self.refresh_history()
+
+    def refresh_history(self):
+        # Clear existing
+        for child in self.history_frame.winfo_children():
+            child.destroy()
+            
+        history = history_utils.get_history()
+        if not history:
+            customtkinter.CTkLabel(self.history_frame, text="No builds recorded yet.", font=customtkinter.CTkFont(slant="italic")).grid(row=0, column=0, pady=20)
+            return
+            
+        for i, entry in enumerate(history):
+            item_frame = customtkinter.CTkFrame(self.history_frame)
+            item_frame.grid(row=i, column=0, padx=10, pady=5, sticky="ew")
+            item_frame.grid_columnconfigure(0, weight=1)
+            
+            title = f"{entry['project_name']} [{entry['build_type']}]"
+            details = f"Time: {entry['global_time']}"
+            
+            info_frame = customtkinter.CTkFrame(item_frame, fg_color="transparent")
+            info_frame.grid(row=0, column=0, padx=10, pady=10, sticky="w")
+            
+            customtkinter.CTkLabel(info_frame, text=title, font=customtkinter.CTkFont(weight="bold")).grid(row=0, column=0, sticky="w")
+            customtkinter.CTkLabel(info_frame, text=details, font=customtkinter.CTkFont(size=11), text_color="gray").grid(row=1, column=0, sticky="w")
+            
+            btn_frame = customtkinter.CTkFrame(item_frame, fg_color="transparent")
+            btn_frame.grid(row=0, column=1, padx=10, pady=10, sticky="e")
+            
+            # Use default value in lambda to capture current entry
+            customtkinter.CTkButton(btn_frame, text="🗑 Delete", width=80, fg_color="#c42b2b", hover_color="#8b1e1e", 
+                                  command=lambda e=entry: self.delete_build_entry(e)).pack(side="right")
+
+    def delete_build_entry(self, entry):
+        if not tkinter.messagebox.askyesno("Confirm Deletion", f"Permanently delete build for {entry['project_name']}?\n\nThis will remove:\n- Local file\n- MEGA file\n- Discord notification"):
+            return
+            
+        # Background thread for deletion
+        Thread(target=self._perform_deletion, args=(entry,), daemon=True).start()
+
+    def _perform_deletion(self, entry):
+        self.status_indicator.configure(text="● DELETING", text_color="orange")
+        print(print_utils.warning(f"DELETING BUILD: {entry['project_name']} ({entry['global_time']})"))
+        
+        # 1. Delete Local
+        if entry.get('local_path') and os.path.exists(entry['local_path']):
+            try:
+                os.remove(entry['local_path'])
+                print(print_utils.info(f"  - Local file deleted: {os.path.basename(entry['local_path'])}"))
+            except Exception as e:
+                print(print_utils.danger(f"  - Local deletion failed: {e}"))
+                
+        # 2. Delete MEGA
+        from modules import upload_module
+        for svc, handle in entry.get('mega_handles', {}).items():
+            if svc == 'mega' and handle:
+                print(print_utils.info("  - Deleting from MEGA ..."))
+                if upload_module.delete_from_mega(handle):
+                    print(print_utils.warning("  - MEGA file deleted successfully"))
+                else:
+                    print(print_utils.danger("  - MEGA deletion failed (check handle or connectivity)"))
+
+        # 3. Delete Discord
+        from modules import send_module
+        for msg_id in entry.get('discord_message_ids', []):
+            print(print_utils.info("  - Removing Discord notification ..."))
+            if send_module.delete_from_discord(msg_id):
+                print(print_utils.warning("  - Discord notification removed"))
+            else:
+                print(print_utils.danger("  - Discord notification removal failed (id may be expired or invalid)"))
+
+        # 4. Remove from history
+        history_utils.remove_entry(entry['id'])
+        
+        # UI Refresh
+        self.after(0, self.refresh_history)
+        self.after(0, lambda: self.status_indicator.configure(text="● IDLE", text_color="gray"))
+        self.after(0, lambda: tkinter.messagebox.showinfo("Success", f"Build for {entry['project_name']} has been completely removed."))
 
     def setup_console_tab(self):
         tab = self.tabview.tab("Console")
@@ -303,15 +399,16 @@ class App(customtkinter.CTk):
             projects = os.getenv('PROJECTS_REPOS', '').split(',')
             global_time = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
 
-            all_built_apks = [] 
+            all_built_apks_dict = {} 
             for project in projects:
                 if not project: continue
                 if bin.constants.stop_requested: break
                 
                 project_apks = build_project_module.build_project(project, global_time)
                 if project_apks:
-                    all_built_apks.append((project, project_apks))
+                    all_built_apks_dict[project] = project_apks
             
+            all_built_apks = list(all_built_apks_dict.items())
             if all_built_apks and not bin.constants.stop_requested:
                 # Store local paths for notification display
                 local_folder_map = {}
@@ -324,15 +421,36 @@ class App(customtkinter.CTk):
                 from modules import upload_module, send_module
                 upload_results = upload_module.mass_upload(all_built_apks, global_time)
                 
-                # Send notifications
+                # Send notifications and record history
                 print_utils.print_msg_box("🔔 Sending Notifications", color=print_utils.BColors.HEADER)
                 for project, build_types_data in upload_results.items():
-                    for build_type, urls in build_types_data.items():
+                    for build_type, data in build_types_data.items():
+                        urls = data.get("urls", {})
+                        meta = data.get("metadata", {})
+                        
                         if urls:
-                            display_name = f"{project} [{build_type}]"
+                            display_name_with_type = f"{project} [{build_type}]"
                             l_path = local_folder_map.get(project, {}).get(build_type)
-                            send_module.send_to_discord(display_name, urls, global_time, local_path=l_path)
-                            send_module.send_to_email(display_name, urls, global_time, local_path=l_path)
+                            
+                            # Send notifications and collect IDs
+                            msg_id = send_module.send_to_discord(display_name_with_type, urls, global_time, local_path=l_path)
+                            send_module.send_to_email(display_name_with_type, urls, global_time, local_path=l_path)
+                            
+                            # Record in history
+                            nice_name = bin.constants.projects.get(project, project)
+                            # Get the full path to the APK file, not just the folder
+                            full_apk_path = all_built_apks_dict.get(project, {}).get(build_type)
+                            
+                            history_utils.add_entry(
+                                project_key=project,
+                                project_name=nice_name,
+                                build_type=build_type,
+                                global_time=global_time,
+                                local_path=full_apk_path,
+                                urls=urls,
+                                mega_handles={"mega": meta.get("mega_handle")} if meta.get("mega_handle") else {},
+                                discord_message_ids=[msg_id] if msg_id else []
+                            )
             
             if not bin.constants.stop_requested:
                 notification_utils.send_desktop_notification(

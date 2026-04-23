@@ -16,6 +16,7 @@ import threading
 
 from modules import send_module
 from utils import print_utils
+import bin.constants
 
 # Thread-local storage to pass context to the monkey-patched open()
 thread_local = threading.local()
@@ -93,9 +94,9 @@ def mass_upload(all_projects_apks, global_time):
         
         for future in futures:
             try:
-                project, build_type, urls = future.result()
+                project, build_type, urls, metadata = future.result()
                 if project not in results: results[project] = {}
-                results[project][build_type] = urls
+                results[project][build_type] = {"urls": urls, "metadata": metadata}
             except Exception as e:
                 print(f"\n{print_utils.danger(f'Critical upload error: {e}')}")
 
@@ -108,12 +109,14 @@ def process_single_upload(project, build_type, apk_path, global_time):
     thread_local.build_type = build_type
     
     urls = {}
+    metadata = {}
     
     # Mega Upload
     if os.getenv('MEGA_ENABLED', 'false').lower() == "true":
-        mega_url = upload_to_mega(project, build_type, global_time, apk_path)
-        if mega_url:
-            urls['mega'] = mega_url
+        mega_result = upload_to_mega(project, build_type, global_time, apk_path)
+        if mega_result:
+            urls['mega'] = mega_result['url']
+            metadata['mega_handle'] = mega_result['handle']
             
     # FTP Upload
     if os.getenv('FTP_ENABLED', 'false').lower() == "true":
@@ -121,7 +124,7 @@ def process_single_upload(project, build_type, apk_path, global_time):
         if ftp_url:
             urls['ftp'] = ftp_url
             
-    return project, build_type, urls
+    return project, build_type, urls, metadata
 
 
 def upload_to_mega(project, build_type, global_time, apk_path):
@@ -139,7 +142,13 @@ def upload_to_mega(project, build_type, global_time, apk_path):
         # This will trigger patched_mega_open
         file = m.upload(apk_path, dest_filename=dest_filename)
         file_url = m.get_upload_link(file)
-        return file_url
+        
+        # Extract handle for deletion later
+        handle = None
+        if isinstance(file, dict) and 'f' in file and len(file['f']) > 0:
+            handle = file['f'][0].get('h')
+        
+        return {"url": file_url, "handle": handle}
 
     except Exception as e:
         print(f"\n{print_utils.danger(f'[{project}][{build_type}] MEGA upload failed: {e}')}")
@@ -186,4 +195,27 @@ def upload_to_ftp(project, build_type, global_time, apk_path):
         print(f"\n{print_utils.danger(f'[{project}][{build_type}] FTP upload failed: {e}')}")
         return None
 
+def delete_from_mega(handle):
+    try:
+        mega = Mega()
+        m = mega.login(os.getenv('MEGA_USERNAME'), os.getenv('MEGA_PASSWORD'))
+        m.destroy(handle)
+        return True
+    except Exception as e:
+        print(f"Failed to delete from MEGA: {e}")
+        return False
 
+def delete_from_ftp(filename):
+    try:
+        host = os.getenv('FTP_HOST')
+        user = os.getenv('FTP_USER')
+        password = os.getenv('FTP_PASS')
+        remote_path = os.getenv('FTP_PATH', '/')
+        with FTP(host) as ftp:
+            ftp.login(user=user, passwd=password)
+            ftp.cwd(remote_path)
+            ftp.delete(filename)
+        return True
+    except Exception as e:
+        print(f"Failed to delete from FTP: {e}")
+        return False

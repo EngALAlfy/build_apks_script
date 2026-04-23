@@ -150,10 +150,28 @@ def send_to_discord(project_name, file_urls, global_time, local_path=None):
             "fields": fields
         }
 
-        requests.post(url, json={"embeds": [embed]})
-        print(print_utils.warning(f"[{project_name}] Discord notification sent"))
+        response = requests.post(url + "?wait=true", json={"embeds": [embed]})
+        if response.status_code in [200, 204]:
+            msg_id = response.json().get('id')
+            print(print_utils.warning(f"[{display_title}] Discord notification sent (ID: {msg_id})"))
+            return msg_id
+        
+        print(print_utils.warning(f"[{display_title}] Discord notification sent (no ID)"))
     except Exception as e:
-        print(print_utils.danger(f"[{project_name}] Discord failed: {e}"))
+        print(print_utils.danger(f"[{display_title}] Discord failed: {e}"))
+    return None
+
+def delete_from_discord(message_id):
+    try:
+        url = os.getenv("DISCORD_WEBHOOK")
+        if not url or not message_id: return False
+        
+        # Webhook message deletion: DELETE /webhooks/{id}/{token}/messages/{message_id}
+        response = requests.delete(f"{url.rstrip('/')}/messages/{message_id}")
+        return response.status_code == 204
+    except Exception as e:
+        print(f"Failed to delete from Discord: {e}")
+        return False
 
 
 
