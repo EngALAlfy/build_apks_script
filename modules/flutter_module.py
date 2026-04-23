@@ -52,7 +52,14 @@ def pub_get(project):
 
 
 def intl_generate(project):
-    run_command(commands_utils.FLUTTER_INTL_GENERATE_COMMAND, project, "flutter intl generate", ignore_errors=True)
+    success = run_command(commands_utils.FLUTTER_INTL_GENERATE_COMMAND, project, "flutter intl generate", ignore_errors=True)
+    if not success:
+        print(print_utils.warning(f"[{project}] intl_utils not found or failed. Attempting to add intl_utils..."))
+        add_success = run_command("flutter pub add intl_utils", project, "flutter pub add intl_utils", ignore_errors=True)
+        if add_success:
+            run_command(commands_utils.FLUTTER_INTL_GENERATE_COMMAND, project, "flutter intl generate (retry)")
+        else:
+            print(print_utils.danger(f"[{project}] Failed to add intl_utils. Localization might be skipped."))
 
 
 def build_debug(project):

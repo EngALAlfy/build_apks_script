@@ -275,15 +275,45 @@ class App(customtkinter.CTk):
             projects = os.getenv('PROJECTS_REPOS', '').split(',')
             global_time = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
 
+            all_built_apks = [] 
             for project in projects:
                 if not project: continue
-                build_project_module.build_project(project, global_time)
+                if bin.constants.stop_requested: break
+                
+                project_apks = build_project_module.build_project(project, global_time)
+                if project_apks:
+                    all_built_apks.append((project, project_apks))
             
-            notification_utils.send_desktop_notification(
-                "Build Successful", 
-                f"All projects ({len([p for p in projects if p])}) have been built successfully!"
-            )
-            tkinter.messagebox.showinfo("Success", "All builds completed successfully!")
+            if all_built_apks and not bin.constants.stop_requested:
+                # Store local paths for notification display
+                local_folder_map = {}
+                for p_name, p_apks in all_built_apks:
+                    local_folder_map[p_name] = {}
+                    for b_type, f_path in p_apks.items():
+                        local_folder_map[p_name][b_type] = os.path.dirname(f_path)
+
+                # Perform mass upload
+                from modules import upload_module, send_module
+                upload_results = upload_module.mass_upload(all_built_apks, global_time)
+                
+                # Send notifications
+                print_utils.print_msg_box("🔔 Sending Notifications", color=print_utils.BColors.HEADER)
+                for project, build_types_data in upload_results.items():
+                    for build_type, urls in build_types_data.items():
+                        if urls:
+                            display_name = f"{project} [{build_type}]"
+                            l_path = local_folder_map.get(project, {}).get(build_type)
+                            send_module.send_to_discord(display_name, urls, global_time, local_path=l_path)
+                            send_module.send_to_email(display_name, urls, global_time, local_path=l_path)
+            
+            if not bin.constants.stop_requested:
+                notification_utils.send_desktop_notification(
+                    "Build Successful", 
+                    f"All projects ({len(all_built_apks)}) have been built and uploaded successfully!"
+                )
+                tkinter.messagebox.showinfo("Success", "All builds and uploads completed successfully!")
+            else:
+                print(print_utils.warning("Build process was stopped by user."))
         except Exception as e:
             print(print_utils.danger(f"Build Process Error: {e}"))
             notification_utils.send_desktop_notification(

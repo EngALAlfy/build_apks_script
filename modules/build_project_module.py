@@ -27,7 +27,7 @@ def build_project(project, global_time):
         
         # flutter build
         build_types = os.environ.get('BUILD_TYPES', 'release').split(',')
-        all_file_urls = {}
+        project_apks = {}
 
         for build_type in build_types:
             if not build_type: continue
@@ -41,23 +41,13 @@ def build_project(project, global_time):
 
             # copy files to local output and get path
             local_apk_path = file_module.copy_files(project, global_time, build_type)
-            
             if local_apk_path and os.path.exists(local_apk_path):
-                # upload builds (Mega, FTP, etc.)
-                uploaded_urls = upload_module.upload(project, global_time, local_apk_path)
-                all_file_urls.update(uploaded_urls)
-                
-                # If no cloud URL, use local path as fallback
-                if not all_file_urls:
-                    all_file_urls['local'] = local_apk_path
+                project_apks[build_type] = local_apk_path
 
-        # Send notifications
-        if all_file_urls:
-            send_module.send_to_discord(project, all_file_urls, global_time)
-            send_module.send_to_email(project, all_file_urls, global_time)
-            
-        print_utils.print_msg_box(f"✅ {project} Completed", color=print_utils.BColors.OKGREEN)
+        print_utils.print_msg_box(f"✅ {project} Build Completed", color=print_utils.BColors.OKGREEN)
+        return project_apks
 
     except Exception as e:
         print(print_utils.danger(f"Failed to build {project}: {e}"))
+        return None
 
