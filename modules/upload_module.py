@@ -38,7 +38,8 @@ class ProgressFile:
             # Only update console every 0.2 seconds to avoid flooding
             if time.time() - self.last_update > 0.2 or self.read_bytes == self.size:
                 percent = (self.read_bytes / self.size) * 100
-                print(f"  ➜ [{self.project}][{self.build_type}] MEGA Uploading: {percent:.1f}%", end='\r', flush=True)
+                nice_name = bin.constants.projects.get(self.project, self.project)
+                print(f"  ➜ [{nice_name}][{self.build_type}] MEGA Uploading: {percent:.1f}%", end='\r', flush=True)
                 self.last_update = time.time()
                 if self.read_bytes == self.size:
                     print() # New line when done
@@ -165,7 +166,8 @@ def upload_to_ftp(project, build_type, global_time, apk_path):
             # Update console every 0.2 seconds to avoid flooding
             if time.time() - last_update > 0.2 or uploaded == file_size:
                 percent = (uploaded / file_size) * 100
-                print(f"  ➜ [{project}][{build_type}] FTP Uploading: {percent:.1f}%", end='\r', flush=True)
+                nice_name = bin.constants.projects.get(project, project)
+                print(f"  ➜ [{nice_name}][{build_type}] FTP Uploading: {percent:.1f}%", end='\r', flush=True)
                 last_update = time.time()
 
         with FTP(host) as ftp:

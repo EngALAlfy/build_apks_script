@@ -13,7 +13,8 @@ def run_command(command, project, task_name, ignore_errors=False):
     if bin.constants.stop_requested:
         raise Exception("Build stopped by user")
     
-    print(print_utils.success(f"[{project}] {task_name} ..."))
+    nice_name = bin.constants.projects.get(project, project)
+    print(print_utils.success(f"[{nice_name}] {task_name} ..."))
     try:
         # Use shell=True for Windows compatibility with complex commands
         process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='replace')
@@ -33,7 +34,7 @@ def run_command(command, project, task_name, ignore_errors=False):
             if stderr: print(print_utils.danger(f"STDERR:\n{stderr}"))
             raise Exception(f"{task_name} failed with exit code {process.returncode}")
             
-        print(print_utils.warning(f"[{project}] Done {task_name}"))
+        print(print_utils.warning(f"[{nice_name}] Done {task_name}"))
         return True
     except Exception as e:
         if bin.constants.stop_requested:

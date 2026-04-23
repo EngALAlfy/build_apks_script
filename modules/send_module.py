@@ -23,9 +23,15 @@ def send_to_email(project_name, file_urls, global_time, local_path=None):
 
     # Extract project key (e.g., "hurryApp" from "hurryApp [release]")
     project_key = project_name.split(' [')[0]
+    build_type = project_name.split(' [')[1] if ' [' in project_name else ""
+    
+    # Get nice name for display
+    nice_name = bin.constants.projects.get(project_key, project_key)
+    display_title = f"{nice_name} {build_type}" if build_type else nice_name
+    
     brand_color = bin.constants.project_colors.get(project_key, "#007bff")
 
-    print(print_utils.success(f"[{project_name}] Sending professional email notification ..."))
+    print(print_utils.success(f"[{display_title}] Sending professional email notification ..."))
     emails = os.getenv("EMAILS")
     if not emails: return
     
@@ -41,7 +47,7 @@ def send_to_email(project_name, file_urls, global_time, local_path=None):
     try:
         message = MIMEMultipart("alternative")
         message['From'] = f"APK Professional Builder <{sender_email}>"
-        message['Subject'] = f"🚀 {project_name} - Build Report ({global_time})"
+        message['Subject'] = f"🚀 {display_title} - Build Report ({global_time})"
 
         # HTML Body
         links_html = "".join([
@@ -64,11 +70,11 @@ def send_to_email(project_name, file_urls, global_time, local_path=None):
         <body style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: auto;">
             <div style="background: {brand_color}; color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
                 <h1 style="margin: 0; font-size: 24px;">Build Success! 🚀</h1>
-                <p style="margin: 5px 0 0; opacity: 0.9;">Project: {project_name}</p>
+                <p style="margin: 5px 0 0; opacity: 0.9;">Project: {display_title}</p>
             </div>
             <div style="padding: 30px; border: 1px solid #eee; border-top: none; border-radius: 0 0 10px 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
                 <p>Hello Team,</p>
-                <p>A new build of <b>{project_name}</b> has been completed successfully and is ready for testing.</p>
+                <p>A new build of <b>{display_title}</b> has been completed successfully and is ready for testing.</p>
                 
                 <h3 style="color: {brand_color}; border-bottom: 2px solid #f0f0f0; padding-bottom: 5px;">📦 Build Details</h3>
                 <table style="width: 100%; border-collapse: collapse; margin-top: 10px;">
@@ -104,11 +110,17 @@ def send_to_discord(project_name, file_urls, global_time, local_path=None):
 
     # Extract project key
     project_key = project_name.split(' [')[0]
+    build_type = project_name.split(' [')[1] if ' [' in project_name else ""
+    
+    # Get nice name for display
+    nice_name = bin.constants.projects.get(project_key, project_key)
+    display_title = f"{nice_name} {build_type}" if build_type else nice_name
+
     brand_color_hex = bin.constants.project_colors.get(project_key, "#007bff")
     # Convert hex to decimal for Discord
     brand_color_dec = int(brand_color_hex.lstrip('#'), 16)
 
-    print(print_utils.success(f"[{project_name}] Sending Discord notification ..."))
+    print(print_utils.success(f"[{display_title}] Sending Discord notification ..."))
     url = os.getenv("DISCORD_WEBHOOK")
     if not url: return
 
@@ -129,7 +141,7 @@ def send_to_discord(project_name, file_urls, global_time, local_path=None):
             })
 
         embed = {
-            "title": f"🚀 New Build: {project_name}",
+            "title": f"🚀 New Build: {display_title}",
             "color": brand_color_dec,
             "timestamp": datetime.now().isoformat(),
             "footer": {

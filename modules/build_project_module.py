@@ -11,11 +11,13 @@ from threading import Thread
 from modules import git_module, file_module, flutter_module, send_module, upload_module
 from modules.flutter_module import build_debug, build_release, build_appbundle
 from utils import print_utils
+import bin.constants
 
 
 def build_project(project, global_time):
     try:
-        print_utils.print_msg_box(f"🚀 Building {project}", color=print_utils.BColors.HEADER)
+        nice_name = bin.constants.projects.get(project, project)
+        print_utils.print_msg_box(f"🚀 Building {nice_name}", color=print_utils.BColors.HEADER)
         
         # clone git project
         git_module.git_clone(project)
