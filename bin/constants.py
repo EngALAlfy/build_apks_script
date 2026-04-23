@@ -1,8 +1,7 @@
 # Define the projects names
 projects = {
-    "hurryApp": "HurryApp Customer",
-    "restaurant_manager": "Restaurant Manager",
-    "BranchManager": "Branch Manager",
+    "hurryApp": "Customer App",
+    "BranchManager": "Vendor App",
     "delivery_captin": "Captain App",
     "hurryapp_onground": "OnGround App",
     "hurryApp_Manager": "Admin App",
@@ -11,7 +10,6 @@ projects = {
 # Define brand colors for projects (Hex codes)
 project_colors = {
     "hurryApp": "#007bff",          # Blue
-    "restaurant_manager": "#ffc107", # Amber
     "BranchManager": "#28a745",      # Green
     "delivery_captin": "#dc3545",    # Red
     "hurryapp_onground": "#17a2b8",  # Teal
