@@ -9,6 +9,7 @@ import os
 from ftplib import FTP
 from mega import Mega
 import mega.mega
+import builtins
 from concurrent.futures import ThreadPoolExecutor
 import time
 import threading
@@ -59,7 +60,7 @@ class ProgressFile:
         self.fd.close()
 
 # Monkey-patch mega.mega.open to use ProgressFile
-original_mega_open = mega.mega.open
+original_mega_open = getattr(mega.mega, 'open', builtins.open)
 
 def patched_mega_open(file, mode='r', *args, **kwargs):
     if mode == 'rb' and hasattr(thread_local, 'project'):
