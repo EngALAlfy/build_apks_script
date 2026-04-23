@@ -155,16 +155,28 @@ def upload_to_ftp(project, build_type, global_time, apk_path):
         if not host or not user or not password:
             return None
 
-        print(f"  ➜ [{project}][{build_type}] Starting FTP Upload ...")
+        file_size = os.path.getsize(apk_path)
+        uploaded = 0
+        last_update = 0
         
+        def callback(chunk):
+            nonlocal uploaded, last_update
+            uploaded += len(chunk)
+            # Update console every 0.2 seconds to avoid flooding
+            if time.time() - last_update > 0.2 or uploaded == file_size:
+                percent = (uploaded / file_size) * 100
+                print(f"  ➜ [{project}][{build_type}] FTP Uploading: {percent:.1f}%", end='\r', flush=True)
+                last_update = time.time()
+
         with FTP(host) as ftp:
             ftp.login(user=user, passwd=password)
             ftp.cwd(remote_path)
             
             filename = f"{project}-{build_type}-{global_time}.apk"
             with open(apk_path, 'rb') as f:
-                ftp.storbinary(f'STOR {filename}', f)
+                ftp.storbinary(f'STOR {filename}', f, callback=callback)
                 
+        print() # New line when done
         ftp_base_url = os.getenv('FTP_BASE_URL', f"ftp://{host}/{remote_path}")
         file_url = f"{ftp_base_url.rstrip('/')}/{filename}"
         return file_url

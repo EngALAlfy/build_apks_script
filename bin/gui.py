@@ -19,16 +19,44 @@ customtkinter.set_default_color_theme("blue")
 class StdoutRedirector:
     def __init__(self, textbox):
         self.textbox = textbox
+        self.pending_cr = False
 
     def write(self, message):
         # Remove ANSI escape sequences for cleaner UI display
         ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
         clean_message = ansi_escape.sub('', message)
         
+        if not clean_message:
+            return
+
         self.textbox.configure(state="normal")
-        self.textbox.insert(tkinter.END, clean_message)
+        
+        # If we have a pending carriage return and this message doesn't start with a newline,
+        # it means the next output should overwrite the current line.
+        if self.pending_cr and not clean_message.startswith('\n'):
+            self.textbox.delete("end-1c linestart", "end-1c")
+            self.pending_cr = False
+
+        if '\r' in clean_message:
+            # Handle multiple carriage returns or \r in the middle of a string
+            parts = clean_message.split('\r')
+            for i, part in enumerate(parts):
+                if i > 0 and part:
+                    self.textbox.delete("end-1c linestart", "end-1c")
+                if part:
+                    self.textbox.insert(tkinter.END, part)
+            
+            if clean_message.endswith('\r'):
+                self.pending_cr = True
+        else:
+            self.textbox.insert(tkinter.END, clean_message)
+            # If the message contained a newline, reset the CR state
+            if '\n' in clean_message:
+                self.pending_cr = False
+            
         self.textbox.see(tkinter.END)
         self.textbox.configure(state="disabled")
+        self.textbox.update_idletasks() # Force UI refresh for real-time feel
 
     def flush(self):
         pass
