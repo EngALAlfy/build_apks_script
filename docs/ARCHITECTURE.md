@@ -22,6 +22,12 @@ flowchart TD
     Logs --> View
 ```
 
+## Central server architecture
+
+`server_main.py` runs Flask through Waitress and starts one scheduler. `server/store.py` owns SQLite transactions, users, hashed passwords, server-side sessions, project permissions, configuration snapshots, FIFO claims, artifacts, and audit records. `server/app.py` exposes authenticated JSON APIs and static dashboard assets. `server/runtime.py` launches one isolated worker process per job; `server/worker.py` reuses the existing build service with per-job environment and history, persists events, collects artifacts, and redacts logs. Windows job objects and a single-instance file lock live in `server/processes.py`.
+
+The browser in `server/web/` uses locally bundled HTML/CSS/JavaScript with no CDN dependencies. It polls progress and logs, submits jobs, manages users/configuration for administrators, and downloads artifacts through permission-checked endpoints. No desktop Tk widgets run in the server. See [server operations and trust boundaries](SERVER.md).
+
 ## View and event loop
 
 `bin/gui.py` owns Tk variables and widgets. Workers publish structured events through `BuildService.events` and write output through `QueueLog`. The main Tk timer drains both queues, updates project status and progress, and restores controls after completion. Search refresh is debounced, and console lines are capped to limit long-session rendering costs.

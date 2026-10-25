@@ -1,0 +1,99 @@
+"""One durable FIFO scheduler; every build executes in a separate process."""
+import os
+import subprocess
+import sys
+import threading
+import time
+from pathlib import Path
+
+from server.processes import ProcessGuard, kill_tree
+from server.store import TERMINAL, now
+
+
+class Runtime:
+    def __init__(self, store):
+        self.store = store
+        self.stopping = threading.Event()
+        self.thread = None
+        self.process = None
+        self.active_job = None
+
+    def start(self):
+        if self.thread and self.thread.is_alive():
+            return
+        self.store.recover()
+        self.thread = threading.Thread(target=self.run, name='build-scheduler', daemon=True)
+        self.thread.start()
+
+    def stop(self):
+        self.stopping.set()
+        if self.active_job:
+            try:
+                self.store.request_cancel(self.active_job)
+            except ValueError:
+                pass
+        if self.thread:
+            self.thread.join(timeout=15)
+        if self.process:
+            kill_tree(self.process)
+
+    def command(self, job_id):
+        prefix = [sys.executable] if getattr(sys, 'frozen', False) else [sys.executable, str(Path(__file__).resolve().parents[1] / 'server_main.py')]
+        return [*prefix, '--worker', job_id, '--data-dir', str(self.store.root)]
+
+    def run(self):
+        while not self.stopping.is_set():
+            try:
+                job = self.store.claim()
+                if not job:
+                    self.stopping.wait(.5)
+                    continue
+                self.execute(job)
+            except Exception as exc:
+                print(f'Scheduler error: {type(exc).__name__}', flush=True)
+                self.stopping.wait(1)
+
+    def execute(self, job):
+        self.active_job = job['id']
+        guard = None
+        try:
+            owner = self.store.user(job['user_id'])
+            if not owner or not owner['enabled'] or owner['role'] not in ('admin', 'builder') or not self.store.can_view(owner, job):
+                self.store.update_job(job['id'], status='failed', stage='Build access was revoked before execution', finished_at=now())
+                return
+            environment = dict(os.environ, PYTHONIOENCODING='utf-8', PYTHONUTF8='1')
+            log_path = self.store.root / 'logs' / (job['id'] + '.log')
+            with log_path.open('ab', buffering=0) as log:
+                self.process = subprocess.Popen(self.command(job['id']), cwd=self.store.root, env=environment,
+                                                stdout=log, stderr=subprocess.STDOUT,
+                                                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0,
+                                                start_new_session=os.name != 'nt')
+                guard = ProcessGuard(self.process)
+                cancelling_at = None
+                while self.process.poll() is None:
+                    state = self.store.job(job['id'])
+                    if self.stopping.is_set() or state['status'] == 'cancel_requested':
+                        if cancelling_at is None:
+                            cancelling_at = time.monotonic()
+                        if time.monotonic() - cancelling_at >= 10:
+                            kill_tree(self.process)
+                            break
+                    self.stopping.wait(.2) if not self.stopping.is_set() else time.sleep(.2)
+            current = self.store.job(job['id'])
+            if current['status'] not in TERMINAL:
+                cancelled = current['status'] == 'cancel_requested' or self.stopping.is_set()
+                self.store.update_job(job['id'], status='cancelled' if cancelled else 'failed', finished_at=now(),
+                                      stage='Cancelled' if cancelled else 'Worker exited unexpectedly; inspect the build log')
+        except Exception as exc:
+            if self.process:
+                try:
+                    kill_tree(self.process)
+                except (OSError, subprocess.TimeoutExpired):
+                    pass
+            self.store.update_job(job['id'], status='failed', finished_at=now(), stage='Unable to run build worker',
+                                  errors=[f'Worker startup failed: {type(exc).__name__}'])
+        finally:
+            if guard:
+                guard.close()
+            self.process = None
+            self.active_job = None

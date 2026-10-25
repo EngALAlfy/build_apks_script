@@ -1,9 +1,16 @@
 # APK Builder
 
-A Windows desktop release workspace for building and distributing multiple Flutter applications.
+A central LAN build server and Windows desktop release workspace for Flutter applications. Teammates can use a professional browser dashboard to queue builds, follow live logs, and download APKs with role-based project access.
+
+## Central server
+
+Launch **APK Build Server.exe**, or run `python server_main.py` after installing `requirements-server.txt`. On the server PC, open `http://localhost:8080`, create the first administrator, configure the repository owner, and add team accounts. Share the printed LAN URL with teammates. Only the server PC needs Git and Flutter; clients use a browser. No `.env` is required.
+
+See [LAN server setup, permissions, queue, and deployment](docs/SERVER.md). The existing desktop application remains available through `python main.py`.
 
 ## Documentation
 
+- [LAN server and browser dashboard](docs/SERVER.md)
 - [Standalone executable and configuration](docs/CONFIGURATION.md)
 - [Documentation index](docs/README.md)
 - [Slack integration and setup](docs/integrations/SLACK.md)
