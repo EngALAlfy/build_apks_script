@@ -15,6 +15,14 @@ with tempfile.TemporaryDirectory() as folder, patch.object(settings_utils, 'load
     app = App()
     try:
         app.update()
+        assert 'SLACK_ENABLED' in app.toggles
+        assert 'SLACK_WEBHOOK' in app.fields
+        app.fields['SLACK_WEBHOOK'].set('https://hooks.slack.com/services/TTEST/BTEST/test-secret')
+        assert app.collect_settings()['SLACK_ENABLED'] == 'false'
+        assert app.collect_settings()['SLACK_WEBHOOK'].endswith('/test-secret')
+        slack_entries = [w for w in app.controls if getattr(w, 'cget', None) and w.__class__.__name__ == 'CTkEntry'
+                         and w.cget('textvariable') == app.fields['SLACK_WEBHOOK']]
+        assert len(slack_entries) == 1 and slack_entries[0].cget('show') == '*'
         for page in app.pages:
             app.show_page(page)
             app.update()

@@ -25,7 +25,7 @@ class BuildSystemTests(unittest.TestCase):
         self.history = patch.object(history_utils, 'HISTORY_FILE', self.root / 'history.json')
         self.history.start()
         self.env = patch.dict(os.environ, {'MEGA_ENABLED': 'false', 'FTP_ENABLED': 'false',
-                                          'DISCORD_ENABLED': 'false', 'EMAIL_ENABLED': 'false'})
+                                          'DISCORD_ENABLED': 'false', 'EMAIL_ENABLED': 'false', 'SLACK_ENABLED': 'false'})
         self.env.start()
         constants.stop_requested = False
 
@@ -38,7 +38,7 @@ class BuildSystemTests(unittest.TestCase):
     def plan(self, **updates):
         settings = dict(GIT_WORKSPACE=str(self.root / 'source'), RESULT_WORKSPACE=str(self.root / 'output'),
                         GIT_BRANCH='main', GIT_USER='example', MEGA_ENABLED='false', FTP_ENABLED='false',
-                        DISCORD_ENABLED='false', EMAIL_ENABLED='false')
+                        DISCORD_ENABLED='false', EMAIL_ENABLED='false', SLACK_ENABLED='false')
         settings.update(updates)
         return BuildPlan(('hurryApp',), ('release',), settings)
 

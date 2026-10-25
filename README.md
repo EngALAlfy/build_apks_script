@@ -2,6 +2,13 @@
 
 A Windows desktop release workspace for building and distributing multiple Flutter applications.
 
+## Documentation
+
+- [Documentation index](docs/README.md)
+- [Slack integration and setup](docs/integrations/SLACK.md)
+- [All integration settings](docs/INTEGRATIONS.md)
+- [System architecture](docs/ARCHITECTURE.md)
+
 ## Run
 
 Use Python 3.11 or newer with Git and the Flutter SDK available on `PATH`.
@@ -21,7 +28,7 @@ Private repository access uses Git Credential Manager. Authenticate Git before s
 
 1. Configure the source workspace, artifact directory, GitHub owner, and branch in **Build settings**.
 2. Select applications and formats in **Build workspace**. Debug APK, release APK, and release App Bundle are supported.
-3. Optionally enable MEGA or FTP delivery in **Distribution**. Email and Discord notifications require a delivery channel so they can include download links.
+3. Optionally enable MEGA or FTP delivery in **Distribution**. Slack, email, and Discord notifications require a delivery channel so they can include download links.
 4. Validate setup, then start the build. Follow each project's stage or inspect live output in **Console**. Export a redacted log when troubleshooting.
 5. Open **Artifacts** for searchable history, local folders, and delivery links. Local files enter history immediately after collection, even if later steps fail.
 
@@ -33,7 +40,7 @@ Artifacts are grouped by unique session and project and retain the pubspec versi
 
 ## Artifact maintenance
 
-**Forget record** only removes the history entry. **Delete artifact** confirms before removing the local APK/AAB, tracked MEGA file, and tracked Discord messages. Local deletion is restricted to the configured artifact directory. Partial cleanup retains history and remaining remote handles for retry. FTP files require separate removal on the server, as stated in the confirmation.
+**Forget record** only removes the history entry. **Delete artifact** confirms before removing the local APK/AAB, tracked MEGA file, and tracked Discord messages. Local deletion is restricted to the configured artifact directory. Partial cleanup retains history and remaining remote handles for retry. FTP files require separate removal on the server, as stated in the confirmation. Slack webhook notifications remain in their channel after artifact cleanup.
 
 History retains the latest 500 records, and the UI shows up to 100 search results at a time. Console output is capped to keep long sessions responsive. Corrupt history is reported rather than silently overwritten.
 
@@ -44,7 +51,7 @@ History retains the latest 500 records, and the UI shows up to 100 search result
 - `modules/process_runner.py`: shared streamed subprocess execution, explicit working directories, and cancellation.
 - `modules/build_project_module.py`: repository synchronization, dependency resolution, localization, build, and collection for one project.
 - `modules/git_module.py`, `flutter_module.py`, `file_module.py`: source, build-tool, and filesystem adapters.
-- `modules/upload_module.py`, `send_module.py`: optional delivery and notification adapters. The MEGA SDK loads only when used.
+- `modules/upload_module.py`, `send_module.py`, `slack_module.py`: optional delivery and notification adapters. The MEGA SDK loads only when used.
 - `modules/artifact_service.py`: scoped cleanup and retry-safe partial deletion.
 - `utils/history_utils.py`: locked read-modify-write operations and atomic replacement to avoid truncated history.
 - `utils/app_paths.py`, `settings_utils.py`: stable paths, configuration persistence, and credential redaction.

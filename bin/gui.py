@@ -257,6 +257,7 @@ class App(ctk.CTk):
             ('MEGA', 'MEGA cloud', [('MEGA_USERNAME', 'Email'), ('MEGA_PASSWORD', 'Password')]),
             ('FTP', 'FTP server', [('FTP_HOST', 'Host'), ('FTP_USER', 'Username'), ('FTP_PASS', 'Password'), ('FTP_PATH', 'Remote directory'), ('FTP_BASE_URL', 'Public download base URL')]),
             ('DISCORD', 'Discord notifications', [('DISCORD_WEBHOOK', 'Webhook URL')]),
+            ('SLACK', 'Slack notifications', [('SLACK_WEBHOOK', 'Incoming webhook URL')]),
             ('EMAIL', 'Email notifications', [('EMAILS', 'Recipients, separated by commas'), ('SMTP_HOST', 'SMTP host'), ('SMTP_PORT', 'SMTP port'), ('EMAIL_USER', 'Sender email'), ('EMAIL_PASSWORD', 'Password')]),
         ]
         for key, title, fields in services:
@@ -579,6 +580,8 @@ class App(ctk.CTk):
         text = f"Permanently delete {entry.get('project_name', 'this artifact')}?\n\n" + '\n'.join(details)
         if entry.get('urls', {}).get('ftp'):
             text += '\n\nFTP files must be removed on the FTP server separately.'
+        if entry.get('slack_notified'):
+            text += '\n\nSlack notifications remain in the channel; incoming webhooks cannot delete messages.'
         if not messagebox.askyesno('Delete artifact', text, parent=self):
             return
         if self.service.delete_artifact(entry['id'], self.fields['RESULT_WORKSPACE'].get()):

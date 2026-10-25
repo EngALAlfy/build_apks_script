@@ -15,6 +15,7 @@ SERVICE_FIELDS = {
     'MEGA': ('MEGA_USERNAME', 'MEGA_PASSWORD'),
     'FTP': ('FTP_HOST', 'FTP_USER', 'FTP_PASS', 'FTP_BASE_URL'),
     'DISCORD': ('DISCORD_WEBHOOK',),
+    'SLACK': ('SLACK_WEBHOOK',),
     'EMAIL': ('EMAILS', 'SMTP_HOST', 'SMTP_PORT', 'EMAIL_USER', 'EMAIL_PASSWORD'),
 }
 
@@ -49,7 +50,7 @@ class BuildPlan:
         if not owner and self.settings.get('GIT_WORKSPACE'):
             if any(not (Path(self.settings['GIT_WORKSPACE']) / p / '.git').exists() for p in self.projects):
                 errors.append('Set a GitHub owner to clone missing repositories.')
-        if any(self.settings.get(k + '_ENABLED') == 'true' for k in ('DISCORD', 'EMAIL')) and not any(
+        if any(self.settings.get(k + '_ENABLED') == 'true' for k in ('DISCORD', 'EMAIL', 'SLACK')) and not any(
                 self.settings.get(k + '_ENABLED') == 'true' for k in ('MEGA', 'FTP')):
             errors.append('Enable MEGA or FTP delivery to send notification download links.')
         for executable in ('git', 'flutter'):
@@ -60,6 +61,10 @@ class BuildPlan:
                 missing = [f for f in fields if not self.settings.get(f, '').strip()]
                 if missing:
                     errors.append(f'{service}: missing ' + ', '.join(missing))
+        if self.settings.get('SLACK_ENABLED') == 'true' and self.settings.get('SLACK_WEBHOOK', '').strip():
+            from modules.slack_module import valid_webhook_url
+            if not valid_webhook_url(self.settings['SLACK_WEBHOOK'].strip()):
+                errors.append('Slack requires an HTTPS incoming webhook URL on hooks.slack.com or hooks.slack-gov.com.')
         if self.settings.get('EMAIL_ENABLED') == 'true':
             try:
                 if not 1 <= int(self.settings.get('SMTP_PORT', '')) <= 65535:
@@ -146,6 +151,12 @@ class BuildService:
                                 history_utils.update_entry(entries[kind], urls=urls,
                                     mega_handles={'mega': meta['mega_handle']} if meta.get('mega_handle') else {})
                                 if urls:
+                                    if plan.settings.get('SLACK_ENABLED') == 'true':
+                                        from modules.slack_module import send_to_slack
+                                        slack_ok = send_to_slack(project, kind, urls, stamp, artifact)
+                                        history_utils.update_entry(entries[kind], slack_notified=bool(slack_ok))
+                                        if not slack_ok:
+                                            warnings.append(f'{project} / {kind}: Slack notification was not acknowledged; check Console and the Slack channel before retrying')
                                     message = send_module.send_to_discord(f'{project} [{kind}]', urls, stamp, str(Path(artifact).parent))
                                     if plan.settings.get('DISCORD_ENABLED') == 'true' and not message:
                                         warnings.append(f'{project}: Discord notification failed')
