@@ -6,7 +6,7 @@ A central LAN build server and Windows desktop release workspace for Flutter app
 
 Launch **APK Build Server.exe**, or run `python server_main.py` after installing `requirements-server.txt`. On the server PC, open `http://localhost:8080`, create the first administrator, configure the repository owner, and add team accounts. Share the printed LAN URL with teammates. Only the server PC needs Git and Flutter; clients use a browser. No `.env` is required.
 
-See [LAN server setup, permissions, queue, and deployment](docs/SERVER.md). The existing desktop application remains available through `python main.py`.
+See [LAN server setup, permissions, queue, and deployment](docs/SERVER.md) and [automatic background startup](docs/STARTUP.md). The existing desktop application remains available through `python main.py`.
 
 ## Documentation
 

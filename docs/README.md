@@ -4,6 +4,7 @@ Start with the [project README](../README.md) to install and run the desktop app
 
 | Guide | Purpose |
 | --- | --- |
+| [Windows startup](STARTUP.md) | Run the server automatically in the background without opening a browser. |
 | [LAN server](SERVER.md) | Host the browser dashboard, configure access controls, and operate the durable build queue. |
 | [Standalone configuration](CONFIGURATION.md) | Run a single executable, locate user settings, and migrate existing installations. |
 | [Slack setup](integrations/SLACK.md) | Connect a Slack channel, configure the webhook, and troubleshoot delivery. |

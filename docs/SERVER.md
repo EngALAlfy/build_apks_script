@@ -76,6 +76,10 @@ Press **Ctrl+C** in the server console for a graceful stop. Waiting jobs remain 
 
 Only one server process may own a data directory. Do not start multiple HTTP worker processes or multiple copies against the same data directory. Waitress supplies concurrent HTTP threads, while the scheduler owns exactly one build worker. This design supports small teams on a single build PC; it is not a distributed worker cluster.
 
+## Automatic Windows startup
+
+See [automatic startup](STARTUP.md) for hidden background startup with no browser, restart supervision, and the distinction between Windows service identity and dashboard accounts. Both sign-in and before-sign-in modes use the existing Windows account and server profile.
+
 ## Storage and backups
 
 ```text
