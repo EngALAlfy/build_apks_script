@@ -3,3 +3,7 @@ dist/
 build/
 __pycache__/
 .env
+.venv/
+build_history.json
+*.log
+test-output/

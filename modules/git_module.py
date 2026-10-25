@@ -1,81 +1,30 @@
-##############################################
-#                                            #
-#                 Git module                 #
-#           Response for operation           #
-#           on pull and push form repos      #
-#                                            #
-##############################################
+"""Non-destructive repository synchronization."""
 import os
 import subprocess
-from utils import print_utils
-import bin.constants
-
-def run_git_command(command, project, task_name, cwd=None):
-    if bin.constants.stop_requested:
-        raise Exception("Build stopped by user")
-
-    nice_name = bin.constants.projects.get(project, project)
-    print(print_utils.success(f"[{nice_name}] {task_name} ..."))
-    try:
-        process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=cwd)
-        bin.constants.current_process = process
-        
-        stdout, stderr = process.communicate()
-        
-        if bin.constants.stop_requested:
-            raise Exception("Build stopped by user")
-            
-        if process.returncode != 0:
-            print(print_utils.danger(f"[{project}] {task_name} FAILED"))
-            if stdout: print(print_utils.info(f"STDOUT:\n{stdout}"))
-            if stderr: print(print_utils.danger(f"STDERR:\n{stderr}"))
-            raise Exception(f"{task_name} failed with exit code {process.returncode}")
-            
-        print(print_utils.warning(f"[{nice_name}] Done {task_name}"))
-        return True
-    except Exception as e:
-        if bin.constants.stop_requested:
-            raise Exception("Build stopped by user")
-        raise e
-    finally:
-        bin.constants.current_process = None
-
+from pathlib import Path
+from modules.process_runner import run_command
 
 def git_clone(project):
-    use_token = os.getenv('GIT_USE_TOKEN', 'false').lower() == "true"
-    workspace_dir = os.getenv('GIT_WORKSPACE')
-    
-    if not workspace_dir:
-        print(print_utils.danger(f"[{project}] GIT_WORKSPACE not set"))
-        return
-
-    # Normalize path and ensure it exists
-    workspace_dir = os.path.abspath(workspace_dir)
-    if not os.path.exists(workspace_dir):
-        print(print_utils.info(f"Creating workspace: {workspace_dir}"))
-        os.makedirs(workspace_dir, exist_ok=True)
-
-    project_path = os.path.join(workspace_dir, project)
-    user = os.getenv('GIT_USER')
-    token = os.getenv('GIT_TOKEN')
-    branch = os.getenv('GIT_BRANCH', 'main')
-    
-    # Check if the repo exists
-    if os.path.isdir(project_path) and os.path.exists(os.path.join(project_path, ".git")):
-        print(print_utils.info(f"[{project}] Repo exists, pulling updates..."))
-        run_git_command("git restore .", project, "git restore", cwd=project_path)
-        run_git_command(f"git pull origin {branch}", project, "git pull", cwd=project_path)
+    workspace = Path(os.environ['GIT_WORKSPACE']).expanduser().resolve()
+    workspace.mkdir(parents=True, exist_ok=True)
+    destination = workspace / project
+    branch = os.getenv('GIT_BRANCH', 'main').strip()
+    if destination.exists():
+        if not (destination / '.git').exists():
+            raise ValueError(f'{destination} is not a Git repository.')
+        dirty = subprocess.check_output(['git', 'status', '--porcelain'], cwd=destination, text=True)
+        if dirty.strip():
+            raise ValueError(f'{project} has local changes. Commit or stash them before building.')
+        run_command(['git', 'fetch', 'origin', branch], destination, 'Fetch source')
+        run_command(['git', 'checkout', branch], destination, 'Switch branch')
+        run_command(['git', 'merge', '--ff-only', 'FETCH_HEAD'], destination, 'Update source')
     else:
-        print(print_utils.info(f"[{project}] Repo not found, cloning..."))
-        if use_token and token:
-            url = f"https://{user}:{token}@github.com/{user}/{project}.git"
-        else:
-            url = f"https://github.com/{user}/{project}.git"
-        
-        run_git_command(f"git clone --single-branch --branch {branch} {url}", project, "git clone", cwd=workspace_dir)
-            
-    if not os.path.isdir(project_path):
-        raise FileNotFoundError(f"Project directory {project_path} not found after git operation")
-    
-    # Final check: move to project path for subsequent flutter commands
-    os.chdir(project_path)
+        owner = os.getenv('GIT_USER', '').strip()
+        if not owner:
+            raise ValueError('Set the GitHub owner in Build settings before cloning.')
+        # Private repositories use Git Credential Manager; tokens never enter URLs.
+        run_command(['git', 'clone', '--single-branch', '--branch', branch,
+                     f'https://github.com/{owner}/{project}.git', str(destination)], workspace, 'Clone repository')
+    if not (destination / 'pubspec.yaml').is_file():
+        raise ValueError(f'{project} does not contain pubspec.yaml.')
+    return destination

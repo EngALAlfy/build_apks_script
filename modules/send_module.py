@@ -92,14 +92,17 @@ def send_to_email(project_name, file_urls, global_time, local_path=None):
         """
         message.attach(MIMEText(html, 'html'))
 
-        with smtplib.SMTP(smtp_host, smtp_port) as server:
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=30) as server:
             server.starttls()
             server.login(sender_email, sender_password)
             for email in emails:
+                if 'To' in message:
+                    del message['To']
                 message['To'] = email.strip()
                 server.sendmail(sender_email, email.strip(), message.as_string())
 
         print(print_utils.warning(f"[{project_name}] Email sent successfully"))
+        return True
     except Exception as e:
         print(print_utils.danger(f"[{project_name}] Email failed: {e}"))
 
@@ -150,13 +153,13 @@ def send_to_discord(project_name, file_urls, global_time, local_path=None):
             "fields": fields
         }
 
-        response = requests.post(url + "?wait=true", json={"embeds": [embed]})
+        response = requests.post(url, params={"wait": "true"}, json={"embeds": [embed]}, timeout=30)
         if response.status_code in [200, 204]:
-            msg_id = response.json().get('id')
+            msg_id = response.json().get('id') if response.content else None
             print(print_utils.warning(f"[{display_title}] Discord notification sent (ID: {msg_id})"))
             return msg_id
         
-        print(print_utils.warning(f"[{display_title}] Discord notification sent (no ID)"))
+        print(print_utils.danger(f"[{display_title}] Discord returned HTTP {response.status_code}"))
     except Exception as e:
         print(print_utils.danger(f"[{display_title}] Discord failed: {e}"))
     return None
@@ -167,8 +170,9 @@ def delete_from_discord(message_id):
         if not url or not message_id: return False
         
         # Webhook message deletion: DELETE /webhooks/{id}/{token}/messages/{message_id}
-        response = requests.delete(f"{url.rstrip('/')}/messages/{message_id}")
-        return response.status_code == 204
+        base_url = url.split('?', 1)[0].rstrip('/')
+        response = requests.delete(f"{base_url}/messages/{message_id}", timeout=30)
+        return response.status_code in (204, 404)
     except Exception as e:
         print(f"Failed to delete from Discord: {e}")
         return False

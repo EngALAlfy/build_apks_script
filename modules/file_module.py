@@ -5,10 +5,9 @@
 #           on build files and folders       #
 #                                            #
 ##############################################
-import json
 import os
+import re
 import shutil
-from datetime import datetime
 
 import yaml
 
@@ -19,16 +18,16 @@ def copy_files(project, global_time, build_type):
     print(print_utils.success(f"[{project}] start copy files ..."))
     result_path = os.getenv("RESULT_WORKSPACE")
     workspace_dir = os.getenv('GIT_WORKSPACE')
-    project_path = f"{workspace_dir}\\{project}"
+    project_path = os.path.join(workspace_dir, project)
 
     # Get version from pubspec.yaml
     version = "1.0"
     try:
         pubspec_path = os.path.join(project_path, 'pubspec.yaml')
         if os.path.exists(pubspec_path):
-            with open(pubspec_path, 'r') as file:
+            with open(pubspec_path, 'r', encoding='utf-8') as file:
                 pubspec_content = yaml.safe_load(file)
-            version = pubspec_content.get('version', "1.0")
+            version = (pubspec_content or {}).get('version', "1.0")
     except Exception as e:
         print(print_utils.warning(f"[{project}] Could not read pubspec.yaml: {e}"))
 
@@ -37,7 +36,8 @@ def copy_files(project, global_time, build_type):
     os.makedirs(new_file_dir, exist_ok=True)
     
     extension = 'aab' if build_type == 'appbundle' else 'apk'
-    new_file_name = f"{project}-{version}-{build_type}.{extension}"
+    safe_version = re.sub(r'[^A-Za-z0-9.+_-]', '_', str(version))[:100]
+    new_file_name = f"{project}-{safe_version}-{build_type}.{extension}"
     new_file = os.path.join(new_file_dir, new_file_name)
 
     if build_type == 'appbundle':

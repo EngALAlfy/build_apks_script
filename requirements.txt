@@ -1,7 +1,6 @@
 PyYAML
 python-dotenv
 mega.py
-pywhatkit
 customtkinter
 requests
 plyer
