@@ -11,7 +11,7 @@ from utils import settings_utils, history_utils
 
 with tempfile.TemporaryDirectory() as folder, patch.object(settings_utils, 'load_settings', return_value={
         'BUILD_TYPES': 'release', 'PROJECTS_REPOS': 'hurryApp,BranchManager'}), patch.object(
-        history_utils, 'HISTORY_FILE', Path(folder) / 'history.json'):
+        history_utils, 'HISTORY_FILE', Path(folder) / 'history.json'), patch.object(history_utils, 'LEGACY_HISTORY_FILE', Path(folder) / 'legacy-history.json'):
     app = App()
     try:
         app.update()

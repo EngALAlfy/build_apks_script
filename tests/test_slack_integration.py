@@ -112,7 +112,7 @@ class SlackTests(unittest.TestCase):
 
     def test_build_pipeline_persists_slack_outcome_and_keeps_artifacts(self):
         for acknowledged in (True, False):
-            with self.subTest(acknowledged=acknowledged), tempfile.TemporaryDirectory() as folder, patch.object(history_utils, 'HISTORY_FILE', Path(folder) / 'history.json'):
+            with self.subTest(acknowledged=acknowledged), tempfile.TemporaryDirectory() as folder, patch.object(history_utils, 'HISTORY_FILE', Path(folder) / 'history.json'), patch.object(history_utils, 'LEGACY_HISTORY_FILE', Path(folder) / 'legacy-history.json'):
                 artifact = Path(folder) / 'app.apk'
                 artifact.write_bytes(b'APK')
                 def build(project, stamp, stage, record):

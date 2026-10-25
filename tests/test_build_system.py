@@ -24,6 +24,9 @@ class BuildSystemTests(unittest.TestCase):
         self.root = Path(self.temp.name)
         self.history = patch.object(history_utils, 'HISTORY_FILE', self.root / 'history.json')
         self.history.start()
+        legacy_history = patch.object(history_utils, 'LEGACY_HISTORY_FILE', self.root / 'legacy-history.json')
+        legacy_history.start()
+        self.addCleanup(legacy_history.stop)
         self.env = patch.dict(os.environ, {'MEGA_ENABLED': 'false', 'FTP_ENABLED': 'false',
                                           'DISCORD_ENABLED': 'false', 'EMAIL_ENABLED': 'false', 'SLACK_ENABLED': 'false'})
         self.env.start()

@@ -15,6 +15,8 @@ Follow Slack's [official incoming webhook guide](https://docs.slack.dev/messagin
 
 ## Configuration
 
+Enter these settings in **Distribution** and save. The names below also work as environment variables or optional legacy `.env` imports; no `.env` file is required for the executable.
+
 ```dotenv
 SLACK_ENABLED=true
 SLACK_WEBHOOK=YOUR_GENERATED_SLACK_WEBHOOK_URL
@@ -22,7 +24,7 @@ SLACK_WEBHOOK=YOUR_GENERATED_SLACK_WEBHOOK_URL
 
 Replace the placeholder with the generated URL. Accepted endpoints use HTTPS and either `hooks.slack.com/services/...` or `hooks.slack-gov.com/services/...`. Other hosts, embedded user credentials, query strings, and fragments are rejected. `SLACK_ENABLED` defaults to `false` for existing configurations.
 
-The field is masked in the desktop app. Settings are stored in the local `.env` beside the source entry point or executable. The webhook is a credential: keep `.env` private, keep it out of Git, and rotate the webhook through Slack if it is exposed. The app redacts configured webhook values and recognizable Slack webhook URLs from displayed/exported logs.
+The field is masked in the desktop app. Settings are stored in `%LOCALAPPDATA%\APKBuilder\settings.json`. The webhook is a credential: keep this profile file private, keep it out of Git, and rotate the webhook through Slack if it is exposed. The app never embeds your webhook in the executable. The app redacts configured webhook values and recognizable Slack webhook URLs from displayed/exported logs.
 
 ## Delivery contract
 

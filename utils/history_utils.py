@@ -5,14 +5,15 @@ import tempfile
 from datetime import datetime
 from threading import RLock
 from uuid import uuid4
-from utils.app_paths import HISTORY_FILE
+from utils.app_paths import HISTORY_FILE, LEGACY_HISTORY_FILE
 
 _lock = RLock()
 
 def get_history():
     with _lock:
         try:
-            with open(HISTORY_FILE, encoding='utf-8') as stream:
+            source = HISTORY_FILE if os.path.exists(HISTORY_FILE) else LEGACY_HISTORY_FILE
+            with open(source, encoding='utf-8') as stream:
                 data = json.load(stream)
             if not isinstance(data, list) or any(not isinstance(e, dict) for e in data):
                 raise ValueError('Build history must be a list of records.')
@@ -22,6 +23,7 @@ def get_history():
 
 def save_history(history):
     with _lock:
+        os.makedirs(os.path.dirname(os.path.abspath(HISTORY_FILE)), exist_ok=True)
         fd, temporary = tempfile.mkstemp(dir=os.path.dirname(os.path.abspath(HISTORY_FILE)), suffix='.tmp')
         try:
             with os.fdopen(fd, 'w', encoding='utf-8') as stream:

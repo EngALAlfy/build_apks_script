@@ -1,6 +1,6 @@
 # Integration reference
 
-Delivery providers produce download links; notification adapters announce those links. Configure them in **Distribution** or `.env`. All flags default to `false`. Clearing a UI field and saving clears its stored setting. Settings are locked during builds.
+Delivery providers produce download links; notification adapters announce those links. Configure them in **Distribution**. No `.env` is required; saved configuration lives in your user profile. All flags default to `false`. Clearing a UI field and saving clears its stored setting. Settings are locked during builds.
 
 ## Provider matrix
 
@@ -12,7 +12,7 @@ Delivery providers produce download links; notification adapters announce those 
 | Slack | Artifact notification | `SLACK_WEBHOOK` | None |
 | Email | Artifact notification | `EMAILS`, `SMTP_HOST`, `SMTP_PORT`, `EMAIL_USER`, `EMAIL_PASSWORD` | None |
 
-Enable with `MEGA_ENABLED`, `FTP_ENABLED`, `DISCORD_ENABLED`, `SLACK_ENABLED`, or `EMAIL_ENABLED`. Start from [`.env.example`](../.env.example); it contains placeholders rather than credentials.
+Enable with `MEGA_ENABLED`, `FTP_ENABLED`, `DISCORD_ENABLED`, `SLACK_ENABLED`, or `EMAIL_ENABLED`. The names in [`.env.example`](../.env.example) also document supported environment variables and the optional legacy import format; the file is not required beside the executable.
 
 ## Build and delivery order
 
@@ -50,7 +50,7 @@ Incoming webhooks receive build embeds and download links. Successful response I
 
 ## Credentials and logs
 
-`.env` is local credential storage, not a secrets vault. Do not commit or bundle it. Password/webhook fields are masked and known secrets are redacted in the desktop Console and exported logs. Redaction is a safeguard rather than a reason to share credentials or unrestricted logs.
+Settings are stored as JSON in `%LOCALAPPDATA%\APKBuilder\settings.json`. This is local configuration storage, not a secrets vault: configured credentials are stored as plain strings. Keep the profile file private and do not commit or bundle it. An optional legacy `.env` is imported on first use; it is never created or updated by the app. Password/webhook fields are masked and known secrets are redacted in the desktop Console and exported logs. Redaction is a safeguard rather than a reason to share credentials or unrestricted logs.
 
 ## Extension contract
 

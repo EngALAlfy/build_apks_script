@@ -4,6 +4,7 @@ A Windows desktop release workspace for building and distributing multiple Flutt
 
 ## Documentation
 
+- [Standalone executable and configuration](docs/CONFIGURATION.md)
 - [Documentation index](docs/README.md)
 - [Slack integration and setup](docs/integrations/SLACK.md)
 - [All integration settings](docs/INTEGRATIONS.md)
@@ -20,7 +21,7 @@ python -m pip install -r requirements.txt
 python main.py
 ```
 
-Copy `.env.example` to `.env`, or enter settings in the app and save them. Settings and artifact history live beside `main.py` (or beside the executable when packaged). Existing `.env` settings remain compatible. Credentials are stored locally in `.env`; keep that file private and out of source control.
+No `.env` file is required. Enter settings in the app and save them. Settings are stored in `%LOCALAPPDATA%\APKBuilder\settings.json` and artifact history in `%LOCALAPPDATA%\APKBuilder\build_history.json`. The same user profile is used by the source app and packaged executable, so moving the executable does not lose settings. An existing adjacent `.env` is read only when no saved user settings exist; saving imports it into the user profile without modifying the original. See [configuration and migration](docs/CONFIGURATION.md).
 
 Private repository access uses Git Credential Manager. Authenticate Git before starting a build. `GIT_USER` is the GitHub username or organization owning the repositories; legacy token-bearing clone URLs are no longer created.
 
@@ -75,4 +76,4 @@ python -m pip install pyinstaller
 python -m PyInstaller main.spec
 ```
 
-The package excludes `.env` and build history. Distribute credentials separately. The generated application is a desktop window; the integrated Console carries process output.
+The result is a single `dist/APK Builder.exe`. Copy only that executable; it includes Python, application dependencies, and UI assets. No companion `.env`, Python installation, or configuration template is needed. On first launch, enter configuration in the app and save. Git and the Flutter SDK must still be installed and available on `PATH`. Credentials and history are never embedded in the executable. The integrated Console carries process output.

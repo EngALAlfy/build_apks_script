@@ -2,7 +2,8 @@
 
 from PyInstaller.utils.hooks import collect_data_files
 
-# Removed .env to avoid bundling secrets
+# Single executable; settings and history are created in the user's profile.
+# Never bundle local credentials or history.
 datas = collect_data_files('customtkinter')
 
 a = Analysis(

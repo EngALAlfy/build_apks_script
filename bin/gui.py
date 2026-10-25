@@ -43,6 +43,7 @@ class App(ctk.CTk):
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
         self.settings = settings_utils.load_settings()
+        os.environ.update(self.settings)
         self.service = BuildService()
         self.logs = Queue()
         self.original_streams = sys.stdout, sys.stderr
@@ -272,7 +273,7 @@ class App(ctk.CTk):
             for env_key, label in fields:
                 self.input_field(panel, env_key, label, secret=env_key in settings_utils.SECRET_KEYS)
             self.label(panel, ' ', 3).pack(pady=3)
-        self.label(scroll, 'Notifications include download links and require MEGA or FTP delivery. Settings are stored in the local .env file.',
+        self.label(scroll, 'Notifications include download links and require MEGA or FTP delivery. Settings are saved in your user profile; no .env file is required.',
                    12, C['muted'], wraplength=780, justify='left').pack(anchor='w', pady=(0, 14))
         self.button(scroll, 'Save distribution settings', self.save_settings, True, width=220).pack(anchor='e')
 

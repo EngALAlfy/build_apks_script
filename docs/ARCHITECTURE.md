@@ -44,7 +44,7 @@ The coordinator applies the captured settings to environment-based adapters and 
 
 ## Persistence and cleanup
 
-`utils/app_paths.py` anchors `.env` and `build_history.json` beside the source app or packaged executable. Subprocesses use explicit working directories and never change the application cwd.
+`utils/app_paths.py` anchors `settings.json` and `build_history.json` in `%LOCALAPPDATA%\APKBuilder`, independently of the executable location. `utils/settings_utils.py` reads and atomically replaces the user settings file. The source app and executable share the user profile. Legacy `.env` and history beside the app are read only until their respective profile files exist; future writes target the profile and leave legacy files unchanged. Subprocesses use explicit working directories and never change the application cwd.
 
 `utils/history_utils.py` protects in-process history updates with an `RLock` and atomically replaces JSON files. It retains up to 500 records and refuses to silently overwrite malformed history. It is not a multi-process database.
 
@@ -53,6 +53,7 @@ The coordinator applies the captured settings to environment-based adapters and 
 ## Verification and packaging
 
 - `tests/test_build_system.py`: core pipeline, subprocess cancellation, Git preservation, collection, history, and cleanup.
+- `tests/test_settings_storage.py`: fresh startup without `.env`, atomic user-profile persistence, legacy migration, cleared values, and executable-location independence.
 - `tests/test_slack_integration.py`: mocked Slack HTTP boundary and coordinator outcomes.
 - `tests/gui_smoke.py`: real Tk window with isolated settings and a simulated build; it verifies Slack field masking and configuration capture.
 - `main.spec`: PyInstaller desktop executable with CustomTkinter assets; credentials and history are excluded.
