@@ -10,6 +10,8 @@ from server.store import Store, now
 class RedactingOutput:
     encoding = 'utf-8'
     def __init__(self, stream):
+        if hasattr(stream, 'reconfigure'):
+            stream.reconfigure(encoding='utf-8', errors='backslashreplace')
         self.stream = stream
         self.written = 0
         self.lock = threading.Lock()
@@ -21,7 +23,7 @@ class RedactingOutput:
             if self.written < 20 * 1024 * 1024:
                 self.stream.write(clean)
                 self.stream.flush()
-                self.written += len(clean.encode('utf-8'))
+                self.written += len(clean.encode('utf-8', errors='backslashreplace'))
                 if self.written >= 20 * 1024 * 1024:
                     self.stream.write('\nLog limit reached; further console output omitted.\n')
         return len(value)
@@ -41,7 +43,12 @@ def run_worker(root, job_id):
     os.environ.update(job['settings'])
     history_utils.HISTORY_FILE = store.root / 'history' / (job_id + '.json')
     history_utils.LEGACY_HISTORY_FILE = history_utils.HISTORY_FILE
-    sys.stdout = RedactingOutput(sys.stdout)
+    original_stdout, original_stderr = sys.stdout, sys.stderr
+    # Own the log encoding explicitly. PyInstaller's redirected stdout can use
+    # a legacy Windows code page even when its parent sets UTF-8 env variables.
+    log_stream = (store.root / 'logs' / (job_id + '.log')).open(
+        'a', encoding='utf-8', errors='backslashreplace', buffering=1)
+    sys.stdout = RedactingOutput(log_stream)
     sys.stderr = sys.stdout
     stopped = threading.Event()
 
@@ -83,3 +90,5 @@ def run_worker(root, job_id):
     finally:
         stopped.set()
         monitor.join(timeout=2)
+        sys.stdout, sys.stderr = original_stdout, original_stderr
+        log_stream.close()

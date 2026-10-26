@@ -17,6 +17,7 @@ def fake_build(project, stamp, stage, record):
     artifact.parent.mkdir(parents=True, exist_ok=True)
     artifact.write_bytes(b'ISOLATED-TEST-ARTIFACT')
     print('Fixture console output')
+    print('\u221a Flutter success / \u2713 verified / العربية / \U0001f680')
     record('release', str(artifact))
     return {'release': str(artifact)}
 

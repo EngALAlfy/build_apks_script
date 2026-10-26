@@ -123,6 +123,12 @@ python -m PyInstaller --noconfirm server.spec
 
 The result is `dist/APK Build Server.exe`. Distribute only that executable to the host PC. Clients do not run it. The desktop executable is still built separately using `main.spec`.
 
+## Log encoding
+
+Worker logs are opened explicitly as UTF-8, and redirected server/worker streams are reconfigured to UTF-8 with safe escaping for malformed characters. This is required for packaged Windows executables, where environment encoding flags alone may not change the native output stream. Flutter success symbols, non-English output, and emoji must not turn a successful compilation into a logging failure.
+
+The offline packaged regression is `python tests/worker_unicode_smoke.py "dist/APK Build Server.exe"`. It initializes a local fixture repository and uses fake Git/Flutter commands that emit real UTF-8 bytes; it does not access remote repositories or run Gradle.
+
 ## Verify
 
 ```powershell

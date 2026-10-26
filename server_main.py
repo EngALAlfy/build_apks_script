@@ -9,6 +9,11 @@ from pathlib import Path
 
 
 def main():
+    # Frozen Windows executables may ignore PYTHONIOENCODING at startup.
+    # Configure the actual streams rather than relying on environment flags.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, 'reconfigure'):
+            stream.reconfigure(encoding='utf-8', errors='backslashreplace')
     parser = argparse.ArgumentParser(description='APK Builder LAN server')
     parser.add_argument('--host', default='0.0.0.0')
     parser.add_argument('--port', type=int, default=8080)
