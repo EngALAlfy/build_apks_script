@@ -4,6 +4,7 @@ Start with the [project README](../README.md) to install and run the desktop app
 
 | Guide | Purpose |
 | --- | --- |
+| [Stable LAN name](LAN_NAME.md) | Share apk-builder.local instead of a changing numeric IP. |
 | [Windows startup](STARTUP.md) | Run the server automatically in the background without opening a browser. |
 | [LAN server](SERVER.md) | Host the browser dashboard, configure access controls, and operate the durable build queue. |
 | [Standalone configuration](CONFIGURATION.md) | Run a single executable, locate user settings, and migrate existing installations. |

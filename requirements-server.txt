@@ -1,3 +1,4 @@
 -r requirements.txt
 Flask>=3.1,<4
 waitress>=3.0,<4
+zeroconf>=0.151,<1

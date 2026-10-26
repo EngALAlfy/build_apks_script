@@ -7,6 +7,7 @@ import tempfile
 import threading
 from pathlib import Path
 from unittest.mock import patch
+from types import SimpleNamespace
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from playwright.sync_api import sync_playwright, expect
 from waitress import create_server
@@ -19,6 +20,7 @@ errors=[]
 with tempfile.TemporaryDirectory() as folder, patch('modules.build_service.BuildPlan.validate',return_value=[]):
     app=create_app(folder)
     store=app.config['STORE']
+    app.config['DISCOVERY']=SimpleNamespace(status=lambda:dict(hostname='apk-builder.local',url='http://apk-builder.local:8080',status='advertised',addresses=['192.168.1.8']))
     http=create_server(app,host='127.0.0.1',port=0,threads=4)
     thread=threading.Thread(target=http.run,daemon=True)
     thread.start()
@@ -39,6 +41,7 @@ with tempfile.TemporaryDirectory() as folder, patch('modules.build_service.Build
             expect(page.get_by_role('heading',name='Overview',exact=True)).to_be_visible()
             page.get_by_role('button',name='Server settings',exact=True).click()
             config=page.locator('#settings-form')
+            expect(page.get_by_label('Shareable LAN address',exact=True)).to_have_value('http://apk-builder.local:8080')
             config.get_by_label('GitHub owner or organization',exact=True).fill('fixture-organization')
             config.get_by_role('button',name='Save configuration').click()
             expect(page.get_by_text('Server configuration saved. New builds will use these settings.',exact=True)).to_be_visible()

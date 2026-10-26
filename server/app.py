@@ -182,6 +182,7 @@ def create_app(data_dir, secure_cookies=False):
                        projects=[dict(id=p, name=projects[p], color=project_colors[p]) for p in allowed],
                        formats=[dict(id=k, name=v) for k, v in tasks.items()],
                        default_branch=store.settings().get('GIT_BRANCH', 'main'),
+                       network=app.config['DISCOVERY'].status() if app.config.get('DISCOVERY') else None,
                        tools={'git': bool(shutil.which('git')), 'flutter': bool(shutil.which('flutter'))},
                        stats={'queued': sum(j['status'] == 'queued' for j in jobs),
                               'running': sum(j['status'] in ('running', 'cancel_requested') for j in jobs),

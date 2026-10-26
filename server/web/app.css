@@ -6,3 +6,5 @@
 @media(prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
 
 @media(max-width:700px){.toast-region .toast:not(:last-child){display:none}}
+
+.lan-panel{margin-bottom:20px}.lan-url{font-family:Consolas,monospace;color:var(--blue);background:#f8faff}.lan-name-link{font-size:10px;overflow-wrap:anywhere}

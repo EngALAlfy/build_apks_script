@@ -11,7 +11,7 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from server.processes import kill_tree
 
 root=Path(__file__).resolve().parents[1]
-exe=root/'dist/APK Build Server/APK Build Server.exe'
+exe=Path(sys.argv[1]).resolve() if len(sys.argv)>1 else root/'dist/APK Build Server/APK Build Server.exe'
 with tempfile.TemporaryDirectory() as folder:
     data=Path(folder)/'data'
     with socket.socket() as endpoint:

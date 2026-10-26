@@ -36,9 +36,13 @@ The default listener is `0.0.0.0:8080`, which accepts connections on the host's 
 4. Authenticate Git as the Windows account running the server, including private repository access. Ensure Git, Flutter, Java/Android tooling, required SDKs, and signing configuration work for that account. Interactive Git prompts are disabled in build workers.
 5. Configure optional MEGA/FTP delivery and Slack/Discord/email notifications if required. Direct LAN downloads work without any cloud provider.
 6. Open **Team & access**, create accounts, select roles and permitted projects, and share account credentials privately with each teammate.
-7. Share the printed LAN URL, for example `http://192.168.1.50:8080`. Each client needs only a modern browser and network access to that PC.
+7. Share `http://apk-builder.local:8080` with mDNS-capable devices on the same LAN, or use a printed IP/computer-name URL as a fallback. Each client needs only a modern browser and network access to that PC.
 
 For LAN access, the host firewall must permit the selected TCP port on the intended private network. If Windows asks about network access, the PC owner should choose the intended network profile. This project does not change firewall rules, power settings, router settings, or create a Windows service automatically. No router port forwarding is required for clients on the same LAN. A DHCP reservation or stable host name keeps the shared address consistent.
+
+## Stable server name
+
+The server advertises `http://apk-builder.local:8080` and follows its current IPv4 LAN address. See [stable LAN name setup and troubleshooting](LAN_NAME.md) for discovery requirements, custom names, adapter selection, and router/DNS alternatives. The existing sign-in startup task keeps the same name across restarts.
 
 ## Roles and project permissions
 

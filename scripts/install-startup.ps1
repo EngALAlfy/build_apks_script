@@ -4,6 +4,9 @@ param(
     [string]$ExecutablePath,
     [string]$DataDirectory = (Join-Path $env:LOCALAPPDATA 'APKBuilderServer'),
     [string]$BindAddress = '0.0.0.0',
+    [string]$LanName = 'apk-builder',
+    [string]$LanInterface = '',
+    [switch]$NoMdns,
     [ValidateRange(1,65535)][int]$Port = 8080,
     [System.Management.Automation.PSCredential]$Credential,
     [switch]$StartNow
@@ -21,7 +24,7 @@ if (-not $ExecutablePath) {
 $apkExecutable = (Resolve-Path -LiteralPath $ExecutablePath).ProviderPath
 $apkRunner = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot 'run-server.ps1')).ProviderPath
 $apkDataPath = [IO.Path]::GetFullPath($DataDirectory)
-foreach ($apkArgument in @($apkExecutable,$apkRunner,$apkDataPath,$BindAddress)) {
+foreach ($apkArgument in @($apkExecutable,$apkRunner,$apkDataPath,$BindAddress,$LanName,$LanInterface)) {
     if ($apkArgument.Contains('"') -or $apkArgument.Contains("`r") -or $apkArgument.Contains("`n")) {
         throw 'Startup arguments cannot contain quote or newline characters.'
     }
@@ -31,6 +34,9 @@ if ($apkExistingTask -and -not $apkExistingTask.Description.StartsWith($apkMarke
     throw 'A task with this name already exists and is not managed by this installer.'
 }
 $apkActionArguments = '-NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -File "' + $apkRunner + '" -ExecutablePath "' + $apkExecutable + '" -DataDirectory "' + $apkDataPath.TrimEnd('\') + '" -BindAddress "' + $BindAddress + '" -Port ' + $Port
+$apkActionArguments += ' -LanName "' + $LanName + '"'
+if ($LanInterface) { $apkActionArguments += ' -LanInterface "' + $LanInterface + '"' }
+if ($NoMdns) { $apkActionArguments += ' -NoMdns' }
 $apkPowerShell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
 if (-not (Test-Path -LiteralPath $apkPowerShell -PathType Leaf)) { throw 'Windows PowerShell was not found at its standard system location.' }
 $apkAction = New-ScheduledTaskAction -Execute $apkPowerShell -Argument $apkActionArguments -WorkingDirectory ([IO.Path]::GetDirectoryName($apkExecutable))

@@ -14,6 +14,9 @@ def main():
     parser.add_argument('--port', type=int, default=8080)
     parser.add_argument('--data-dir', type=Path)
     parser.add_argument('--no-browser', action='store_true')
+    parser.add_argument('--lan-name', default='apk-builder', help='Stable mDNS name; default: apk-builder.local')
+    parser.add_argument('--lan-interface', help='Optional network adapter description, GUID, or index for LAN discovery')
+    parser.add_argument('--no-mdns', action='store_true', help='Disable local-name announcements')
     parser.add_argument('--secure-cookies', action='store_true', help='Require HTTPS cookies when deployed behind a TLS reverse proxy')
     parser.add_argument('--worker', help=argparse.SUPPRESS)
     options = parser.parse_args()
@@ -29,7 +32,11 @@ def main():
     from server.processes import InstanceLock
     from server.runtime import Runtime
     from waitress import create_server
+    from server.discovery import Discovery
+    discovery = Discovery(options.lan_name, options.port, options.lan_interface, options.host,
+                          enabled=not options.no_mdns and options.host not in ('127.0.0.1', 'localhost', '::1'))
     app = create_app(root, options.secure_cookies)
+    app.config['DISCOVERY'] = discovery
     lock = InstanceLock(root / 'server.lock')
     runtime = Runtime(app.config['STORE'])
     http = None
@@ -37,9 +44,11 @@ def main():
         http = create_server(app, host=options.host, port=options.port, threads=8,
                              max_request_body_size=64 * 1024, channel_timeout=60, ident='APK Build Server')
         runtime.start()
+        discovery.start()
         local = f'http://localhost:{options.port}'
         print(f'\nAPK BUILDER / CENTRAL BUILD SERVER\n\nLocal dashboard: {local}\nData directory: {root}', flush=True)
         if options.host not in ('127.0.0.1', 'localhost', '::1'):
+            print(f'Computer name:   http://{socket.gethostname().lower()}:{options.port}', flush=True)
             try:
                 addresses = sorted({item[4][0] for item in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET)})
             except OSError:
@@ -56,6 +65,7 @@ def main():
     except KeyboardInterrupt:
         print('\nStopping the server and active build...', flush=True)
     finally:
+        discovery.close()
         runtime.stop()
         if http:
             http.close()

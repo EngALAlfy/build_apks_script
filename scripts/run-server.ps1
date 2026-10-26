@@ -3,11 +3,17 @@ param(
     [Parameter(Mandatory = $true)][string]$ExecutablePath,
     [Parameter(Mandatory = $true)][string]$DataDirectory,
     [string]$BindAddress = '0.0.0.0',
+    [string]$LanName = 'apk-builder',
+    [string]$LanInterface = '',
+    [switch]$NoMdns,
     [ValidateRange(1,65535)][int]$Port = 8080
 )
 $ErrorActionPreference = 'Stop'
 $apkExecutable = (Resolve-Path -LiteralPath $ExecutablePath).ProviderPath
 $apkDataPath = [IO.Path]::GetFullPath($DataDirectory)
+foreach ($apkArgument in @($apkExecutable,$apkDataPath,$BindAddress,$LanName,$LanInterface)) {
+    if ($apkArgument.Contains('"') -or $apkArgument.Contains("`r") -or $apkArgument.Contains("`n")) { throw 'Startup arguments cannot contain quotes or newlines.' }
+}
 $apkLogPath = Join-Path $apkDataPath 'startup'
 New-Item -ItemType Directory -Path $apkLogPath -Force | Out-Null
 $apkStatusLog = Join-Path $apkLogPath 'supervisor.log'
@@ -48,6 +54,8 @@ while ($true) {
         }
         $apkWaitingReported = $false
         $apkArgumentLine = '--no-browser --host "' + $BindAddress + '" --port ' + $Port + ' --data-dir "' + $apkDataPath.TrimEnd('\') + '"'
+        if ($NoMdns) { $apkArgumentLine += ' --no-mdns' } else { $apkArgumentLine += ' --lan-name "' + $LanName + '"' }
+        if ($LanInterface) { $apkArgumentLine += ' --lan-interface "' + $LanInterface + '"' }
         $apkServerProcess = Start-Process -FilePath $apkExecutable -ArgumentList $apkArgumentLine -WorkingDirectory ([IO.Path]::GetDirectoryName($apkExecutable)) -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $apkLogPath 'server-output.log') -RedirectStandardError (Join-Path $apkLogPath 'server-error.log')
         @{ ProcessId = $apkServerProcess.Id; ExecutablePath = $apkExecutable; StartedAtUtc = $apkServerProcess.StartTime.ToUniversalTime().ToString('o') } | ConvertTo-Json | Set-Content -LiteralPath $apkProcessRecord -Encoding UTF8
         Write-ApkStatus ('Server launched in the background. PID=' + $apkServerProcess.Id)
