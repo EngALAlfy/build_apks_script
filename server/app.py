@@ -90,7 +90,7 @@ def create_app(data_dir, secure_cookies=False):
         response.headers['X-Frame-Options'] = 'DENY'
         response.headers['Referrer-Policy'] = 'same-origin'
         response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
-        if request.path.startswith('/api/'):
+        if request.path == '/' or request.path.startswith(('/api/', '/assets/')):
             response.headers['Cache-Control'] = 'no-store'
         if g.get('new_cookie'):
             response.set_cookie(COOKIE, g.new_cookie, max_age=28800 if g.session_data.get('user_id') else 1800,
@@ -179,6 +179,7 @@ def create_app(data_dir, secure_cookies=False):
             job['queue_position'] = positions.get(job['id'])
         allowed = list(projects) if g.user['role'] == 'admin' else [p for p in g.user['projects'] if p in projects]
         return jsonify(jobs=jobs[:100], artifacts=artifacts[:100], worker_busy=busy,
+                       max_parallel_builds=store.max_parallel_builds(),
                        projects=[dict(id=p, name=projects[p], color=project_colors[p]) for p in allowed],
                        formats=[dict(id=k, name=v) for k, v in tasks.items()],
                        default_branch=store.settings().get('GIT_BRANCH', 'main'),
@@ -233,6 +234,14 @@ def create_app(data_dir, secure_cookies=False):
         store.audit(g.user['username'], 'build.cancel_requested', job_id)
         return jsonify(ok=True)
 
+    @app.delete('/api/jobs/<job_id>')
+    @require('admin', 'builder')
+    def delete_job(job_id):
+        accessible_job(job_id)
+        from server.cleanup import delete_build
+        delete_build(store, job_id, g.user)
+        return jsonify(ok=True)
+
     @app.get('/api/jobs/<job_id>/logs')
     @require()
     def logs(job_id):
@@ -258,6 +267,9 @@ def create_app(data_dir, secure_cookies=False):
         if not artifact or (g.user['role'] != 'admin' and artifact['project'] not in g.user['projects']):
             raise APIError('Artifact not found.', 404)
         path = Path(artifact['path']).resolve()
+        job = store.job(artifact['job_id'])
+        if not job or job['status'] == 'deleting':
+            raise APIError('This build is being deleted.', 409)
         if not path.is_relative_to((store.root / 'artifacts' / artifact['job_id']).resolve()) or path.suffix not in ('.apk', '.aab') or not path.is_file():
             raise APIError('Artifact file is no longer available.', 404)
         store.audit(g.user['username'], 'artifact.download', artifact_id)
@@ -292,6 +304,7 @@ def create_app(data_dir, secure_cookies=False):
     @require('admin')
     def config():
         settings = store.settings()
+        settings.setdefault('MAX_PARALLEL_BUILDS', str(store.max_parallel_builds()))
         return jsonify(values={k: v for k, v in settings.items() if k in PUBLIC_FIELDS},
                        secrets_set={k: bool(settings.get(k)) for k in SECRET_FIELDS},
                        storage=str(store.root))

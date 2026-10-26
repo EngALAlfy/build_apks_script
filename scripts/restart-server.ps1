@@ -37,6 +37,7 @@ while ((Get-Date) -lt $apkDeadline) {
         $apkHealth = Invoke-RestMethod -Uri ("http://127.0.0.1:" + $Port + '/health') -TimeoutSec 2
         if ($apkHealth.status -eq 'ok') {
             Write-Output ('Server restarted successfully. Dashboard: http://apk-builder.local:' + $Port)
+            Write-Output 'Restart uses the installed EXE. Source changes require rebuilding and replacing that EXE. Refresh the dashboard with Ctrl+F5 after an update.'
             return
         }
     } catch { }

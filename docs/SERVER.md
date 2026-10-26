@@ -62,13 +62,17 @@ There is no public registration, anonymous artifact access, or shared default pa
 
 1. Select **New build** and choose projects, formats, and branch.
 2. Submit the request. The server validates the selected projects, formats, permissions, branch, tools, and integration configuration.
-3. A durable FIFO queue starts one build at a time. Each account may have up to ten pending builds; the queue accepts up to 100 waiting requests.
+3. A durable FIFO queue starts up to two builds in parallel by default. Administrators can set **Parallel build slots** to 1–4 in Server settings. Each new submission can select the same app with a different branch. Each account may have up to ten pending builds; the queue accepts up to 100 waiting requests.
 4. Each build runs in its own OS process with a private configuration snapshot, Git checkout root, and artifact output root. Client requests cannot supply commands, repository URLs, arbitrary paths, or build-tool arguments.
 5. Open the build for live log output and stage/progress information. The dashboard polls every 2.5 seconds while visible. You can close your browser without stopping the build.
-6. Collected APK/AAB files enter the artifact library immediately. Downloads require authentication and project permission, include SHA-256 metadata, and use the stored artifact ID rather than a client-supplied path.
+6. Collected APK/AAB files enter the artifact library immediately. Downloads require authentication and project permission, show the Git branch and build ID, include SHA-256 metadata, and use the stored artifact ID rather than a client-supplied path.
 7. After a completed/failed/cancelled/interrupted build, **Build again** opens the same selection in a new build form. Submission uses the current server settings and a new workspace.
 
 Branches and application choices come from the configured repository owner and the project catalog in `bin/constants.py`. Every build uses a fresh single-branch clone. Set up required per-user Git/Flutter/Gradle configuration on the server; per-repository untracked signing files are not copied from the old desktop workspace. Update the project catalog in code and rebuild to add applications in this version.
+
+Each worker slot uses a reusable cache/gradle/slot-N Gradle user home. This keeps Gradle daemons separate when jobs run in parallel or one job is cancelled. Host Gradle properties and initialization scripts are copied into the slot; Dart packages and the Flutter SDK keep their normal shared caches. Start with two slots and reduce to one if the PC runs short of memory.
+
+Open any queued or stopped build and choose **Delete build** to permanently remove its entire checkout/build workspace, local artifacts, log, history file, and database/download records. Builders can delete their own builds; administrators can delete any permitted build. Running builds must be cancelled and fully stopped first. A confirmation names the branch and build. If a file is busy, the record stays available for retry. Other builds, reusable shared caches, external uploads, and delivered notifications remain.
 
 ## Queue durability, cancellation, and shutdown
 
@@ -78,7 +82,7 @@ A queued cancellation marks the job cancelled immediately. A running cancellatio
 
 Press **Ctrl+C** in the server console for a graceful stop. Waiting jobs remain queued. If the process or PC stops abruptly, the next startup marks previously running jobs **interrupted** rather than retrying them silently; waiting jobs remain queued. Submit **Build again** to retry interrupted work. Windows worker job objects close with the server to avoid leaving build child processes running after the host exits.
 
-Only one server process may own a data directory. Do not start multiple HTTP worker processes or multiple copies against the same data directory. Waitress supplies concurrent HTTP threads, while the scheduler owns exactly one build worker. This design supports small teams on a single build PC; it is not a distributed worker cluster.
+Only one server process may own a data directory. Do not start multiple HTTP worker processes or multiple copies against the same data directory. Waitress supplies concurrent HTTP threads, while one scheduler owns a bounded pool of independent build workers. Lowering the slot limit lets current builds finish before starting more. This design supports small teams on a single build PC; it is not a distributed worker cluster.
 
 ## Automatic Windows startup
 
@@ -94,6 +98,7 @@ See [automatic startup](STARTUP.md) for hidden background startup with no browse
   workspaces/<job-id>/      isolated source checkouts
   artifacts/<job-id>/       collected APK/AAB files
   history/<job-id>.json     worker distribution and artifact metadata
+  cache/gradle/slot-N/      reusable Gradle cache per parallel worker slot
   server.lock              process ownership lock
 ```
 
@@ -101,7 +106,7 @@ The old desktop app remains available and keeps its separate `%LOCALAPPDATA%/APK
 
 Server configuration and queued configuration snapshots contain configured integration secrets in the local database. Protect the server data directory and backups. APIs return only secret-presence flags; blank secret fields preserve saved values, and explicit clear checkboxes remove them for future jobs. Old queued snapshots retain the values captured when submitted. Passwords use Werkzeug scrypt hashes. Browser sessions use expiring opaque cookies stored as hashes, CSRF tokens, HttpOnly and SameSite cookie attributes, and immediate server-side revocation.
 
-Back up while the server is stopped, or use SQLite's backup facility; copying only the database while a WAL file is active can miss recent state. Keep artifact files with the database if download history must remain usable. Source workspaces, artifact files, job rows, and audit history are retained; there is no automatic disk-retention cleanup in this version. Monitor free space and manage old data during a maintenance window.
+Back up while the server is stopped, or use SQLite's backup facility; copying only the database while a WAL file is active can miss recent state. Keep artifact files with the database if download history must remain usable. Source workspaces, artifact files, job rows, and audit history are retained; there is no automatic disk-retention cleanup in this version. Monitor free space and use Delete build for old queued or stopped builds.
 
 ## HTTP and HTTPS
 

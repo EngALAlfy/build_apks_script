@@ -12,10 +12,10 @@ from uuid import uuid4
 from werkzeug.security import check_password_hash, generate_password_hash
 from bin.constants import projects
 
-TERMINAL = {'completed', 'warning', 'failed', 'cancelled', 'interrupted'}
+TERMINAL = {'completed', 'warning', 'failed', 'cancelled', 'interrupted', 'delete_failed'}
 ROLES = {'admin', 'builder', 'viewer'}
 SECRET_FIELDS = {'MEGA_PASSWORD', 'FTP_PASS', 'EMAIL_PASSWORD', 'DISCORD_WEBHOOK', 'SLACK_WEBHOOK'}
-PUBLIC_FIELDS = {'GIT_USER', 'GIT_BRANCH', 'CLEAN_BUILD', 'MEGA_ENABLED', 'MEGA_USERNAME',
+PUBLIC_FIELDS = {'GIT_USER', 'GIT_BRANCH', 'CLEAN_BUILD', 'MAX_PARALLEL_BUILDS', 'MEGA_ENABLED', 'MEGA_USERNAME',
                  'FTP_ENABLED', 'FTP_HOST', 'FTP_USER', 'FTP_PATH', 'FTP_BASE_URL',
                  'DISCORD_ENABLED', 'SLACK_ENABLED', 'EMAIL_ENABLED', 'EMAILS', 'SMTP_HOST', 'SMTP_PORT', 'EMAIL_USER'}
 DUMMY_PASSWORD_HASH = generate_password_hash('nonexistent-user-placeholder')
@@ -72,8 +72,13 @@ class Store:
                     id INTEGER PRIMARY KEY AUTOINCREMENT, actor TEXT, action TEXT, target TEXT, created_at INTEGER);
             ''')
             defaults = {k: 'false' for k in PUBLIC_FIELDS if k.endswith('_ENABLED')}
-            defaults.update(GIT_USER='', GIT_BRANCH='main', CLEAN_BUILD='true', SMTP_PORT='587', FTP_PATH='/')
+            defaults.update(GIT_USER='', GIT_BRANCH='main', CLEAN_BUILD='true', MAX_PARALLEL_BUILDS='2', SMTP_PORT='587', FTP_PATH='/')
             db.execute('INSERT OR IGNORE INTO settings VALUES (1,?)', (json.dumps(defaults),))
+        with self.connect(immediate=True) as db:
+            columns = {row['name'] for row in db.execute('PRAGMA table_info(jobs)')}
+            for name, definition in (('worker_slot', 'INTEGER'), ('worker_active', 'INTEGER NOT NULL DEFAULT 0')):
+                if name not in columns:
+                    db.execute(f'ALTER TABLE jobs ADD COLUMN {name} {definition}')
 
     @contextmanager
     def connect(self, immediate=False):
@@ -195,12 +200,17 @@ class Store:
             raise ValueError('Unknown configuration field.')
         if any(not isinstance(v, str) or len(v) > 4000 for v in values.values()):
             raise ValueError('Configuration values must be strings up to 4000 characters.')
+        if 'MAX_PARALLEL_BUILDS' in values and values['MAX_PARALLEL_BUILDS'] not in ('1', '2', '3', '4'):
+            raise ValueError('Parallel build slots must be a number from 1 to 4.')
         with self.connect(immediate=True) as db:
             settings = json.loads(db.execute('SELECT value FROM settings WHERE id=1').fetchone()[0])
             settings.update({k: v for k, v in values.items() if k not in SECRET_FIELDS or v})
             for key in clear_secrets:
                 settings[key] = ''
             db.execute('UPDATE settings SET value=? WHERE id=1', (json.dumps(settings),))
+
+    def max_parallel_builds(self):
+        return int(self.settings().get('MAX_PARALLEL_BUILDS', '2'))
 
     @staticmethod
     def can_view(user, job):
@@ -216,6 +226,7 @@ class Store:
         settings = json.loads(data.pop('settings'))
         if internal:
             data['settings'] = settings
+        data['can_delete'] = not data.get('worker_active') and (data['status'] in TERMINAL or data['status'] == 'queued')
         return data
 
     def job(self, job_id, internal=False):
@@ -249,16 +260,21 @@ class Store:
 
     def claim(self):
         with self.connect(immediate=True) as db:
-            if db.execute("SELECT 1 FROM jobs WHERE status IN ('running','cancel_requested')").fetchone():
+            settings = json.loads(db.execute('SELECT value FROM settings WHERE id=1').fetchone()[0])
+            limit = int(settings.get('MAX_PARALLEL_BUILDS', '2'))
+            reserved = list(db.execute("SELECT worker_slot FROM jobs WHERE worker_active=1 OR status IN ('running','cancel_requested')"))
+            if len(reserved) >= limit:
                 return None
+            busy = {row['worker_slot'] for row in reserved}
+            slot = next(index for index in range(1, limit + 1) if index not in busy)
             row = db.execute("SELECT * FROM jobs WHERE status='queued' ORDER BY created_at,rowid LIMIT 1").fetchone()
             if not row:
                 return None
-            db.execute("UPDATE jobs SET status='running',started_at=?,stage='Starting isolated worker' WHERE id=?", (now(), row['id']))
+            db.execute("UPDATE jobs SET status='running',started_at=?,stage='Starting isolated worker',worker_slot=?,worker_active=1 WHERE id=?", (now(), slot, row['id']))
         return self.job(row['id'], internal=True)
 
     def update_job(self, job_id, **values):
-        allowed = {'status', 'stage', 'progress', 'started_at', 'finished_at', 'errors', 'warnings', 'cancel_at'}
+        allowed = {'status', 'stage', 'progress', 'started_at', 'finished_at', 'errors', 'warnings', 'cancel_at', 'worker_active'}
         if not values or set(values) - allowed:
             raise ValueError('Invalid job update.')
         for key in ('errors', 'warnings'):
@@ -270,7 +286,7 @@ class Store:
     def request_cancel(self, job_id):
         with self.connect(immediate=True) as db:
             row = db.execute('SELECT status FROM jobs WHERE id=?', (job_id,)).fetchone()
-            if not row or row['status'] in TERMINAL:
+            if not row or row['status'] in TERMINAL or row['status'] == 'deleting':
                 raise Conflict('This build is already finished.')
             queued = row['status'] == 'queued'
             db.execute('UPDATE jobs SET status=?,stage=?,cancel_at=?,finished_at=? WHERE id=?',
@@ -279,6 +295,8 @@ class Store:
     def recover(self):
         with self.connect() as db:
             db.execute("UPDATE jobs SET status='interrupted',stage='Server restarted; submit a new build to retry',finished_at=? WHERE status IN ('running','cancel_requested')", (now(),))
+            db.execute('UPDATE jobs SET worker_active=0')
+            db.execute("UPDATE jobs SET status='delete_failed',stage='Cleanup interrupted; retry deletion' WHERE status='deleting'")
             db.execute('DELETE FROM sessions WHERE expires<?', (now(),))
 
     def add_artifact(self, job_id, path):
@@ -300,13 +318,14 @@ class Store:
 
     def artifacts(self, user, job_id=None):
         with self.connect() as db:
-            rows = db.execute('SELECT artifacts.*, jobs.projects AS job_projects, jobs.username FROM artifacts JOIN jobs ON jobs.id=artifacts.job_id ' +
+            rows = db.execute('SELECT artifacts.*, jobs.projects AS job_projects, jobs.username, jobs.branch FROM artifacts JOIN jobs ON jobs.id=artifacts.job_id ' +
                               ('WHERE job_id=? ' if job_id else '') + 'ORDER BY artifacts.created_at DESC LIMIT 1000', (job_id,) if job_id else ())
             result = []
             for row in rows:
                 item = dict(row)
                 if user['role'] != 'admin' and item['project'] not in user['projects']:
                     continue
+                item['can_view_build'] = user['role'] == 'admin' or set(json.loads(item['job_projects'])).issubset(user['projects'])
                 item.pop('job_projects')
                 item['available'] = Path(item.pop('path')).is_file()
                 result.append(item)

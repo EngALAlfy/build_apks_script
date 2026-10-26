@@ -8,3 +8,7 @@
 @media(max-width:700px){.toast-region .toast:not(:last-child){display:none}}
 
 .lan-panel{margin-bottom:20px}.lan-url{font-family:Consolas,monospace;color:var(--blue);background:#f8faff}.lan-name-link{font-size:10px;overflow-wrap:anywhere}
+
+.running-card+.running-card{border-top:1px solid var(--line)}.artifact-branch{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:12px}.artifact-branch .branch-chip{overflow-wrap:anywhere;max-width:100%}.status.delete_failed{background:#fff0f2;color:#c85b69}.status.deleting{background:#fff4de;color:#aa791c}#delete-build-dialog>.muted{margin-top:14px;margin-bottom:12px}
+
+.artifact-build-link{margin-top:14px;padding:3px 0}.job-download>span{overflow-wrap:anywhere}.job-download .branch-chip{display:inline-block;margin:4px}

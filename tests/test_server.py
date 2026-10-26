@@ -159,6 +159,7 @@ class ServerTests(unittest.TestCase):
             self.assertEqual(self.post('/api/jobs',{**payload,'projects':[{}]}).status_code,400)
 
     def test_fifo_claim_is_atomic_and_only_one_job_runs(self):
+        self.store.save_settings({'MAX_PARALLEL_BUILDS': '1'})
         first,second=self.enqueue(),self.enqueue()
         with ThreadPoolExecutor(max_workers=4) as executor:
             results=list(executor.map(lambda _:self.store.claim(),range(4)))
@@ -287,6 +288,141 @@ class ServerTests(unittest.TestCase):
         finally:
             runtime.stop()
             thread.join(timeout=5)
+
+    def test_parallel_claims_are_bounded_and_fifo(self):
+        self.store.save_settings({'MAX_PARALLEL_BUILDS':'2'})
+        jobs=[self.enqueue() for _ in range(3)]
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            claims=list(executor.map(lambda _:self.store.claim(),range(5)))
+        active=[claim for claim in claims if claim]
+        self.assertEqual(len(active),2)
+        self.assertEqual({j['id'] for j in active},{j['id'] for j in jobs[:2]})
+        self.assertEqual({j['worker_slot'] for j in active},{1,2})
+        self.assertEqual(self.store.job(jobs[2]['id'])['status'],'queued')
+        # A terminal status must not release a still-live worker slot.
+        self.store.update_job(jobs[0]['id'],status='completed')
+        self.assertIsNone(self.store.claim())
+        self.store.update_job(jobs[0]['id'],worker_active=0)
+        self.assertEqual(self.store.claim()['id'],jobs[2]['id'])
+
+    def test_parallel_capacity_validation_and_live_dashboard(self):
+        self.assertEqual(self.client.get('/api/dashboard').json['max_parallel_builds'],2)
+        for bad in ('0','5','-1','bad'):
+            self.assertEqual(self.post('/api/config',{'values':{'MAX_PARALLEL_BUILDS':bad}},method='PUT').status_code,400)
+        self.assertEqual(self.post('/api/config',{'values':{'MAX_PARALLEL_BUILDS':'3'}},method='PUT').status_code,200)
+        self.assertEqual(self.client.get('/api/dashboard').json['max_parallel_builds'],3)
+
+    def test_same_project_different_branches_run_in_parallel_and_cancel_independently(self):
+        first=self.store.enqueue(self.admin,['hurryApp'],['debug'],'feature/first')
+        second=self.store.enqueue(self.admin,['hurryApp'],['debug'],'feature/second')
+        runtime=Runtime(self.store)
+        fixture=Path(__file__).resolve().parent/'server_fixture_worker.py'
+        runtime.command=lambda jid:[sys.executable,str(fixture),str(self.root),jid,'slow' if jid==first['id'] else 'medium']
+        runtime.start()
+        try:
+            deadline=time.monotonic()+12
+            while time.monotonic()<deadline:
+                logs=[self.root/'logs'/(job['id']+'.log') for job in (first,second)]
+                if all(log.exists() and 'fixture child running' in log.read_text(encoding='utf-8',errors='replace') for log in logs):
+                    break
+                time.sleep(.05)
+            self.assertEqual(self.store.job(first['id'])['status'],'running')
+            self.assertEqual(self.store.job(second['id'])['status'],'running')
+            self.assertNotEqual(self.store.job(first['id'])['worker_slot'],self.store.job(second['id'])['worker_slot'])
+            self.store.request_cancel(first['id'])
+            deadline=time.monotonic()+15
+            while time.monotonic()<deadline:
+                results=[self.store.job(job['id']) for job in (first,second)]
+                if all(not j['worker_active'] for j in results):break
+                time.sleep(.05)
+            self.assertEqual(self.store.job(first['id'])['status'],'cancelled')
+            self.assertEqual(self.store.job(second['id'])['status'],'completed')
+            artifacts=self.store.artifacts(self.admin,second['id'])
+            self.assertEqual(artifacts[0]['branch'],'feature/second')
+            file=self.store.artifact(artifacts[0]['id'])
+            body=Path(file['path']).read_text()
+            self.assertIn('feature/second|',body)
+            self.assertIn('slot-2',body)
+            self.assertTrue((self.root/'cache/gradle/slot-1').is_dir())
+            self.assertTrue((self.root/'cache/gradle/slot-2').is_dir())
+        finally:runtime.stop()
+
+    def create_build_files(self,job):
+        source=self.root/'workspaces'/job['id']
+        (source/'hurryApp/.git/objects').mkdir(parents=True)
+        locked=source/'hurryApp/.git/objects/readonly'
+        locked.write_text('git data')
+        import stat
+        locked.chmod(stat.S_IREAD)
+        apk=self.root/'artifacts'/job['id']/'session/hurryApp/app-debug.apk'
+        apk.parent.mkdir(parents=True)
+        apk.write_bytes(b'APK')
+        self.store.add_artifact(job['id'],apk)
+        (self.root/'logs'/(job['id']+'.log')).write_text('output')
+        (self.root/'history').mkdir(exist_ok=True)
+        (self.root/'history'/(job['id']+'.json')).write_text('[]')
+        self.store.update_job(job['id'],status='completed')
+        return [source,self.root/'artifacts'/job['id'],self.root/'logs'/(job['id']+'.log'),self.root/'history'/(job['id']+'.json')]
+
+    def test_delete_removes_all_build_files_and_records_but_not_another_build(self):
+        job=self.enqueue();other=self.enqueue()
+        paths=self.create_build_files(job)
+        otherpaths=self.create_build_files(other)
+        artifact=self.store.artifacts(self.admin,job['id'])[0]
+        response=self.post('/api/jobs/'+job['id'],method='DELETE')
+        self.assertEqual(response.status_code,200,response.json)
+        self.assertTrue(all(not p.exists() for p in paths))
+        self.assertTrue(all(p.exists() for p in otherpaths))
+        self.assertIsNone(self.store.job(job['id']))
+        self.assertIsNone(self.store.artifact(artifact['id']))
+        self.assertEqual(self.client.get('/api/artifacts/'+artifact['id']+'/download').status_code,404)
+        self.assertTrue(any(e['action']=='build.deleted' for e in self.client.get('/api/audit').json['events']))
+
+    def test_build_delete_permissions_and_running_worker_guard(self):
+        user,client,token=self.account()
+        other=self.enqueue()
+        self.assertEqual(self.post('/api/jobs/'+other['id'],{},client,token,method='DELETE').status_code,403)
+        own=self.enqueue(user)
+        self.assertEqual(self.post('/api/jobs/'+own['id'],{},client,token,method='DELETE').status_code,200)
+        running=self.enqueue()
+        self.store.claim()
+        # Whichever older build was claimed, reserve this row explicitly too.
+        self.store.update_job(running['id'],status='completed',worker_active=1)
+        self.assertEqual(self.post('/api/jobs/'+running['id'],method='DELETE').status_code,409)
+        self.assertIsNotNone(self.store.job(running['id']))
+        _,viewer,viewtoken=self.account('viewer.account','viewer')
+        self.assertEqual(self.post('/api/jobs/'+other['id'],{},viewer,viewtoken,method='DELETE').status_code,403)
+        self.assertEqual(self.client.delete('/api/jobs/'+other['id'],json={}).status_code,403)
+
+    def test_failed_cleanup_retains_retryable_record(self):
+        job=self.enqueue();self.create_build_files(job)
+        with patch('server.cleanup.shutil.rmtree',side_effect=PermissionError('file busy')):
+            response=self.post('/api/jobs/'+job['id'],method='DELETE')
+        self.assertEqual(response.status_code,409)
+        self.assertEqual(self.store.job(job['id'])['status'],'delete_failed')
+        self.assertTrue(self.store.job(job['id'])['can_delete'])
+        self.assertEqual(self.post('/api/jobs/'+job['id'],method='DELETE').status_code,200)
+        self.assertIsNone(self.store.job(job['id']))
+
+    def test_cleanup_rejects_redirected_job_root(self):
+        if os.name!='nt':self.skipTest('Windows junction regression')
+        job=self.enqueue()
+        outside=self.root/'unrelated'
+        outside.mkdir();(outside/'keep.txt').write_text('keep')
+        target=self.root/'workspaces'/job['id']
+        result=__import__('subprocess').run(['cmd.exe','/c','mklink','/J',str(target),str(outside)],capture_output=True,creationflags=__import__('subprocess').CREATE_NO_WINDOW)
+        self.assertEqual(result.returncode,0,result.stderr)
+        response=self.post('/api/jobs/'+job['id'],method='DELETE')
+        self.assertEqual(response.status_code,400)
+        self.assertTrue((outside/'keep.txt').exists())
+        self.assertIsNotNone(self.store.job(job['id']))
+
+    def test_artifact_branch_includes_existing_jobs_without_migration(self):
+        job=self.store.enqueue(self.admin,['hurryApp'],['debug'],'release/customer-v2')
+        self.create_build_files(job)
+        result=self.client.get('/api/dashboard').json['artifacts'][0]
+        self.assertEqual(result['branch'],'release/customer-v2')
+        self.assertTrue(result['can_view_build'])
 
 if __name__=='__main__':
     unittest.main()

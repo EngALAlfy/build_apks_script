@@ -1,10 +1,43 @@
 """Isolated worker entry point. Build configuration never reaches the command line."""
 import os
 import re
+import shutil
 import sys
 import threading
 
 from server.store import Store, now
+
+
+def prepare_gradle_home(store, job):
+    """A reusable Gradle home per exclusive slot prevents daemon sharing.
+
+    Copy host configuration, not its mutable caches/daemon registry. The scheduler
+    keeps the slot reserved until the worker and its child processes are closed.
+    """
+    from pathlib import Path
+    slot = int(job.get('worker_slot') or 1)
+    if slot not in range(1, 5):
+        raise ValueError('Invalid build worker slot.')
+    original = Path(os.getenv('GRADLE_USER_HOME') or Path.home() / '.gradle').resolve()
+    target = store.root / 'cache' / 'gradle' / f'slot-{slot}'
+    if not target.resolve().is_relative_to(store.root):
+        raise ValueError('Gradle slot storage is redirected outside the server directory.')
+    target.mkdir(parents=True, exist_ok=True)
+    if original != target.resolve():
+        properties = target / 'gradle.properties'
+        if (original / 'gradle.properties').is_file():
+            shutil.copy2(original / 'gradle.properties', properties)
+        elif properties.exists():
+            properties.unlink()
+        if (target / 'init.d').is_symlink():
+            (target / 'init.d').unlink()
+        elif (target / 'init.d').exists():
+            if not (target / 'init.d').resolve().is_relative_to(target.resolve()):
+                raise ValueError('Gradle init storage is redirected outside its slot.')
+            shutil.rmtree(target / 'init.d')
+        if (original / 'init.d').is_dir():
+            shutil.copytree(original / 'init.d', target / 'init.d')
+    return str(target)
 
 
 class RedactingOutput:
@@ -40,6 +73,8 @@ def run_worker(root, job_id):
     job = store.job(job_id, internal=True)
     if not job or job['status'] not in ('running', 'cancel_requested'):
         return 1
+    gradle_home = prepare_gradle_home(store, job)
+    job['settings']['GRADLE_USER_HOME'] = gradle_home
     os.environ.update(job['settings'])
     history_utils.HISTORY_FILE = store.root / 'history' / (job_id + '.json')
     history_utils.LEGACY_HISTORY_FILE = history_utils.HISTORY_FILE

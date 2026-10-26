@@ -1,6 +1,6 @@
 # APK Builder
 
-A central LAN build server and Windows desktop release workspace for Flutter applications. Teammates can use a professional browser dashboard to queue builds, follow live logs, and download APKs with role-based project access.
+A central LAN build server and Windows desktop release workspace for Flutter applications. Teammates can use a professional browser dashboard to run parallel builds on different branches, follow live logs, download branch-labelled APKs, and delete stopped builds with their local files with role-based project access.
 
 ## Central server
 

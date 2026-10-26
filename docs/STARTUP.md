@@ -49,6 +49,8 @@ From any PowerShell directory:
 
 The helper stops the managed task and any verified remaining server process, starts the same registered task again, and checks local server health. It keeps all accounts, settings, queue entries, and artifacts, and does not open a browser. Restarting during a build interrupts that build. A pre-existing manually started server is not terminated by this helper. The release folder also contains a copy of `restart-server.ps1`.
 
+Restarting reloads the **installed executable**, not the Python or dashboard source files. After source edits, rebuild with python -m PyInstaller --noconfirm server.spec, replace the registered EXE while the server is stopped and no builds are active, then restart. Refresh the browser with **Ctrl+F5** after deployment. The dashboard and its assets use no-store cache headers.
+
 ## Check, start, stop, or uninstall
 
 ```powershell
