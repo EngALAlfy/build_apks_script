@@ -33,6 +33,22 @@ The password-backed task is needed for unattended operation with the same profil
 
 Keep the installed executable and runner script at their registered paths. The installer can also run beside the EXE when the release folder contains `install-startup.ps1`, `run-server.ps1`, and `uninstall-startup.ps1`.
 
+## Restart the running server
+
+Wait for active builds to finish, then run from the project directory:
+
+```powershell
+.\scripts\restart-server.ps1
+```
+
+From any PowerShell directory:
+
+```powershell
+& "D:\BuildAPKsSystem\build_apks_script\scripts\restart-server.ps1"
+```
+
+The helper stops the managed task and any verified remaining server process, starts the same registered task again, and checks local server health. It keeps all accounts, settings, queue entries, and artifacts, and does not open a browser. Restarting during a build interrupts that build. A pre-existing manually started server is not terminated by this helper. The release folder also contains a copy of `restart-server.ps1`.
+
 ## Check, start, stop, or uninstall
 
 ```powershell

@@ -56,10 +56,13 @@ with tempfile.TemporaryDirectory() as folder, patch('modules.build_service.Build
             expect(page.get_by_text('Team Viewer',exact=True)).to_be_visible()
             page.get_by_role('button',name='Overview',exact=True).click()
             page.get_by_role('button',name='New build',exact=True).click()
+            expect(page.locator('#build-form input[value=debug]')).to_be_checked()
+            expect(page.locator('#build-form input[value=release]')).not_to_be_checked()
             page.screenshot(path=str(screens/'new-build.png'),full_page=True,animations='disabled')
             with page.expect_response(lambda r:r.url.endswith('/api/jobs') and r.request.method=='POST') as response:
                 page.locator('#build-form').get_by_role('button',name='Add to build queue').click()
             assert response.value.status==201,response.value.text()
+            assert response.value.json()['job']['build_types']==['debug']
             job_id=response.value.json()['job']['id']
             expect(page.locator('#job-dialog')).to_be_visible()
             runtime=Runtime(store)

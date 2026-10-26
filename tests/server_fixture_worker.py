@@ -13,13 +13,15 @@ def fake_build(project, stamp, stage, record):
     stage('Fixture compilation')
     if sys.argv[3] == 'slow':
         run_command([sys.executable, '-c', 'import time; print("fixture child running", flush=True); time.sleep(30)'], Path(os.environ['GIT_WORKSPACE']).parent, 'Fixture child')
-    artifact = Path(os.environ['RESULT_WORKSPACE']) / stamp / project / (project + '-1.0-release.apk')
+    kind = os.environ.get('BUILD_TYPES', 'release').split(',')[0]
+    extension = '.aab' if kind == 'appbundle' else '.apk'
+    artifact = Path(os.environ['RESULT_WORKSPACE']) / stamp / project / (project + '-1.0-' + kind + extension)
     artifact.parent.mkdir(parents=True, exist_ok=True)
     artifact.write_bytes(b'ISOLATED-TEST-ARTIFACT')
     print('Fixture console output')
     print('\u221a Flutter success / \u2713 verified / العربية / \U0001f680')
-    record('release', str(artifact))
-    return {'release': str(artifact)}
+    record(kind, str(artifact))
+    return {kind: str(artifact)}
 
 
 with patch('modules.build_service.BuildPlan.validate', return_value=[]), patch('modules.build_service.build_project_module.build_project', side_effect=fake_build):
