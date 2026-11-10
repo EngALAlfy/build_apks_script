@@ -153,9 +153,11 @@ Production Flutter compilation, code signing, real provider credentials, and con
 ## Managing projects
 
 Administrators can add, rename, recolor, and remove projects from **Projects** in the dashboard
-(or via `GET/POST /api/projects`, `PATCH/DELETE /api/projects/<repository>`). The repository name must
-exist under the configured `GIT_USER` on GitHub. The five original projects are seeded on first start;
-after that the list lives in the server database. Removing a project is refused while it has queued or
+(or via `GET/POST /api/projects`, `PATCH/DELETE /api/projects/<repository>`). Each project has its own full
+GitHub URL (`https://github.com/owner/repository`) and default branch; there is no global GitHub owner or
+default branch any more. A build's *Branch override* is optional and, when empty, every project builds its own
+default branch. The five original projects are seeded on first start (an old global owner/branch setting is
+converted into per-project URLs automatically); after that the list lives in the server database. Removing a project is refused while it has queued or
 running builds, revokes it from every member's access, and keeps past builds and artifacts.
 
 ### Tenant (white-label) projects
@@ -167,3 +169,9 @@ unit: sync → clean → `pub get` → `dart run bin/build_tenant.dart --tenant 
 Artifacts are named `<project>-<tenant>-<version>-<type>`, and the tree is reset (`git reset --hard` +
 `git clean -fd`, only after a clean sync) so the next tenant starts from a pristine checkout. `dart` must be
 on PATH (it ships with Flutter).
+
+### Redeploying after code changes
+
+`scripts/deploy-server.sh` (Git Bash) runs the tests, rebuilds `dist/APK Build Server.exe`, stops the startup
+task, replaces the registered executable, restarts it, and waits for `/health`. It refuses to run while builds
+are queued or running unless you pass `--force`; `--no-build` redeploys the existing EXE.
