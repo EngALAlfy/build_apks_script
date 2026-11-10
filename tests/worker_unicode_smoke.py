@@ -20,7 +20,9 @@ with tempfile.TemporaryDirectory() as directory:
     root=Path(directory)
     store=Store(root)
     user=store.create_user('unicode.test','Offline-Fixture-Password-123','admin',['hurryApp'])
-    store.save_settings({'GIT_USER':'offline-fixture','CLEAN_BUILD':'false'})
+    store.save_settings({'CLEAN_BUILD':'false'})
+    for _key in list(__import__('bin.constants',fromlist=['x']).projects):
+        store.update_project(_key, url=f'https://github.com/offline-fixture/{_key}.git')
     job=store.enqueue(user,['hurryApp'],['debug'],'main')
     source=root/'workspaces'/job['id']/'hurryApp'
     source.mkdir(parents=True)

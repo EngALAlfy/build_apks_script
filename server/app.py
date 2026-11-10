@@ -11,7 +11,7 @@ from urllib.parse import urlsplit
 from flask import Flask, g, jsonify, request, send_file, send_from_directory
 from werkzeug.exceptions import HTTPException
 
-from bin.constants import projects, project_colors, tasks
+from bin.constants import projects, project_colors, project_tenants, project_sources, tasks
 from modules.build_service import BuildPlan
 from server.store import Store, Conflict, PUBLIC_FIELDS, SECRET_FIELDS
 
@@ -180,9 +180,8 @@ def create_app(data_dir, secure_cookies=False):
         allowed = list(projects) if g.user['role'] == 'admin' else [p for p in g.user['projects'] if p in projects]
         return jsonify(jobs=jobs[:100], artifacts=artifacts[:100], worker_busy=busy,
                        max_parallel_builds=store.max_parallel_builds(),
-                       projects=[dict(id=p, name=projects[p], color=project_colors[p]) for p in allowed],
+                       projects=[dict(id=p, name=projects[p], color=project_colors[p], tenants=project_tenants.get(p, []), **project_sources.get(p, {})) for p in allowed],
                        formats=[dict(id=k, name=v) for k, v in tasks.items()],
-                       default_branch=store.settings().get('GIT_BRANCH', 'main'),
                        network=app.config['DISCOVERY'].status() if app.config.get('DISCOVERY') else None,
                        tools={'git': bool(shutil.which('git')), 'flutter': bool(shutil.which('flutter'))},
                        stats={'queued': sum(j['status'] == 'queued' for j in jobs),
@@ -205,17 +204,32 @@ def create_app(data_dir, secure_cookies=False):
             raise APIError('Choose at least one recognized project.')
         if not isinstance(formats, list) or not formats or len(formats) > len(tasks) or any(not isinstance(t, str) or t not in tasks for t in formats):
             raise APIError('Choose at least one recognized build format.')
-        if not valid_branch(branch):
-            raise APIError('Enter a valid branch using letters, numbers, dots, underscores, slashes, or hyphens.')
+        branch = branch or ''
+        if branch and not valid_branch(branch):
+            raise APIError('Enter a valid branch using letters, numbers, dots, underscores, slashes, or hyphens, or leave it empty to use each project\'s default branch.')
         if g.user['role'] != 'admin' and not set(selected).issubset(g.user['projects']):
             raise APIError('You do not have access to those projects.', 403)
+        chosen = data.get('tenants') or {}
+        if not isinstance(chosen, dict) or any(not isinstance(k, str) or not isinstance(v, list) or any(not isinstance(t, str) for t in v) for k, v in chosen.items()):
+            raise APIError('Invalid tenant selection.')
+        tenants = {}
+        for project in dict.fromkeys(selected):
+            available, picked = project_tenants.get(project, []), list(dict.fromkeys(chosen.get(project, [])))
+            if available and not picked:
+                raise APIError(f'Choose at least one tenant for {projects[project]}.')
+            if any(t not in available for t in picked):
+                raise APIError(f'Unknown tenant for {projects[project]}.')
+            if picked:
+                tenants[project] = picked
+        if sum(len(tenants.get(p, [None])) for p in dict.fromkeys(selected)) > 30:
+            raise APIError('Select at most 30 project/tenant combinations per build.')
         settings = store.settings()
-        settings.update(GIT_BRANCH=branch, GIT_WORKSPACE=str(store.root / 'workspaces' / 'validation'),
+        settings.update(GIT_BRANCH=branch, PROJECT_SOURCES=store.sources_for(selected), GIT_WORKSPACE=str(store.root / 'workspaces' / 'validation'),
                         RESULT_WORKSPACE=str(store.root / 'artifacts' / 'validation'))
-        errors = BuildPlan(tuple(selected), tuple(formats), settings).validate()
+        errors = BuildPlan(tuple(selected), tuple(formats), settings, tenants).validate()
         if errors:
             raise APIError('Server setup needs attention: ' + ' '.join(errors), 422)
-        job = store.enqueue(g.user, list(dict.fromkeys(selected)), list(dict.fromkeys(formats)), branch)
+        job = store.enqueue(g.user, list(dict.fromkeys(selected)), list(dict.fromkeys(formats)), branch, tenants)
         store.audit(g.user['username'], 'build.queued', job['id'])
         return jsonify(job=job), 201
 
@@ -275,6 +289,34 @@ def create_app(data_dir, secure_cookies=False):
         store.audit(g.user['username'], 'artifact.download', artifact_id)
         return send_file(path, as_attachment=True, download_name=artifact['filename'], conditional=True,
                          mimetype='application/vnd.android.package-archive' if path.suffix == '.apk' else 'application/octet-stream')
+
+    @app.get('/api/projects')
+    @require('admin')
+    def list_projects():
+        return jsonify(projects=[dict(id=p, name=projects[p], color=project_colors[p], tenants=project_tenants.get(p, []), **project_sources.get(p, {})) for p in projects])
+
+    @app.post('/api/projects')
+    @require('admin')
+    def add_project():
+        data = body()
+        key = store.add_project(data.get('url'), data.get('name'), data.get('branch') or 'main', data.get('color') or None, data.get('tenants'))
+        store.audit(g.user['username'], 'project.added', key)
+        return jsonify(ok=True), 201
+
+    @app.patch('/api/projects/<key>')
+    @require('admin')
+    def edit_project(key):
+        data = body()
+        store.update_project(key, data.get('name'), data.get('color'), data.get('tenants'), data.get('url'), data.get('branch'))
+        store.audit(g.user['username'], 'project.updated', key)
+        return jsonify(ok=True)
+
+    @app.delete('/api/projects/<key>')
+    @require('admin')
+    def remove_project(key):
+        store.remove_project(key)
+        store.audit(g.user['username'], 'project.removed', key)
+        return jsonify(ok=True)
 
     @app.get('/api/users')
     @require('admin')

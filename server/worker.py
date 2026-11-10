@@ -114,7 +114,7 @@ def run_worker(root, job_id):
     monitor = threading.Thread(target=watch_cancel, daemon=True)
     monitor.start()
     try:
-        plan = BuildPlan(tuple(job['projects']), tuple(job['build_types']), job['settings'])
+        plan = BuildPlan(tuple(job['projects']), tuple(job['build_types']), job['settings'], job.get('tenants') or {})
         errors = plan.validate()
         if errors:
             store.update_job(job_id, status='failed', stage='Server configuration needs attention', errors=errors, finished_at=now())

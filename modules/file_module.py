@@ -14,7 +14,7 @@ import yaml
 from utils import print_utils
 
 
-def copy_files(project, global_time, build_type):
+def copy_files(project, global_time, build_type, tenant=None):
     print(print_utils.success(f"[{project}] start copy files ..."))
     result_path = os.getenv("RESULT_WORKSPACE")
     workspace_dir = os.getenv('GIT_WORKSPACE')
@@ -33,11 +33,12 @@ def copy_files(project, global_time, build_type):
 
     # Prepare paths
     new_file_dir = os.path.join(result_path, global_time, project)
+    prefix = f'{project}-{tenant}' if tenant else project
     os.makedirs(new_file_dir, exist_ok=True)
     
     extension = 'aab' if build_type == 'appbundle' else 'apk'
     safe_version = re.sub(r'[^A-Za-z0-9.+_-]', '_', str(version))[:100]
-    new_file_name = f"{project}-{safe_version}-{build_type}.{extension}"
+    new_file_name = f"{prefix}-{safe_version}-{build_type}.{extension}"
     new_file = os.path.join(new_file_dir, new_file_name)
 
     if build_type == 'appbundle':

@@ -27,7 +27,7 @@ def build_payload(project, build_type, file_urls, session, artifact_path=None):
     fields = [
         {'type': 'plain_text', 'text': f'Project\n{name}'},
         {'type': 'plain_text', 'text': f'Format\n{build_type.upper()}'},
-        {'type': 'plain_text', 'text': f'Branch\n{os.getenv("GIT_BRANCH", "main")}'},
+        {'type': 'plain_text', 'text': f'Branch\n{__import__("modules.git_module", fromlist=["x"]).branch_for(project)}'},
         {'type': 'plain_text', 'text': f'Session\n{session}'},
     ]
     links = []

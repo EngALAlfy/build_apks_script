@@ -16,6 +16,12 @@ project_colors = {
     "hurryApp_Manager": "#6610f2",   # Purple
 }
 
+# Optional white-label tenants per project (project key -> list of tenant ids)
+project_tenants = {}
+
+# Per-project Git source (project key -> {'url': ..., 'branch': ...})
+project_sources = {}
+
 # Define tasks
 tasks = {
     "debug": "Debug Build",

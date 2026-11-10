@@ -3,15 +3,25 @@ import os
 from modules import git_module, file_module, flutter_module
 from modules.process_runner import check_cancelled
 
-def build_project(project, global_time, on_stage=None, on_artifact=None):
+def build_project(project, global_time, on_stage=None, on_artifact=None, tenant=None):
     emit = on_stage or (lambda stage: None)
     emit('Syncing source')
-    git_module.git_clone(project)
+    git_module.git_clone(project)  # refuses a dirty tree, so cleanup below never discards user changes
+    try:
+        return _build(project, global_time, emit, on_artifact, tenant)
+    finally:
+        if tenant:
+            git_module.restore_clean(project)
+
+def _build(project, global_time, emit, on_artifact, tenant):
     if os.getenv('CLEAN_BUILD', 'true') == 'true':
         emit('Cleaning')
         flutter_module.clean(project)
     emit('Resolving dependencies')
     flutter_module.pub_get(project)
+    if tenant:
+        emit(f'Configuring tenant {tenant}')
+        flutter_module.setup_tenant(project, tenant)
     flutter_module.intl_generate(project)
     artifacts = {}
     builders = {'debug': flutter_module.build_debug, 'release': flutter_module.build_release,
@@ -23,7 +33,7 @@ def build_project(project, global_time, on_stage=None, on_artifact=None):
             raise ValueError(f'Unknown build type: {kind}')
         builders[kind](project)
         check_cancelled()
-        artifact = file_module.copy_files(project, global_time, kind)
+        artifact = file_module.copy_files(project, global_time, kind, tenant)
         if not artifact:
             raise FileNotFoundError(f'Expected {kind} artifact was not produced for {project}.')
         artifacts[kind] = artifact

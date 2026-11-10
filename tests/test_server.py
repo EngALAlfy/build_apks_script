@@ -13,6 +13,7 @@ from unittest.mock import patch
 from server.app import create_app, valid_branch
 from server.processes import InstanceLock
 from server.runtime import Runtime
+from bin.constants import projects
 from server.store import Store
 
 PASSWORD = 'local-test-password-123'
@@ -30,7 +31,8 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(response.status_code, 201)
         self.admin = response.json['user']
         self.csrf = response.json['csrf']
-        self.store.save_settings({'GIT_USER':'example'})
+        for key in list(projects):
+            self.store.update_project(key, url=f'https://github.com/example/{key}.git')
 
     def post(self, url, body=None, client=None, csrf=None, method='POST', **kwargs):
         return (client or self.client).open(url, method=method, json=body or {},
@@ -46,6 +48,55 @@ class ServerTests(unittest.TestCase):
 
     def enqueue(self, user=None):
         return self.store.enqueue(user or self.admin, ['hurryApp'], ['release'], 'main')
+
+    def test_project_management(self):
+        self.assertEqual(self.post('/api/projects', {'url': 'https://github.com/acme/new_app', 'name': 'New App'}).status_code, 201)
+        self.assertEqual(self.post('/api/projects', {'url': 'https://github.com/other/NEW_APP.git', 'name': 'Dup'}).status_code, 409)
+        self.assertEqual(self.post('/api/projects', {'url': 'https://evil.com/a/b', 'name': 'x'}).status_code, 400)
+        self.assertIn('new_app', [p['id'] for p in self.client.get('/api/dashboard').json['projects']])
+        user, client, csrf = self.account('viewerless', 'builder', ['new_app'])
+        self.assertEqual(self.post('/api/projects', {'url': 'https://github.com/a/x1', 'name': 'x'}, client, csrf).status_code, 403)
+        self.store.enqueue(self.admin, ['new_app'], ['debug'], 'main')
+        self.assertEqual(self.post('/api/projects/new_app', method='DELETE').status_code, 409)
+        self.assertEqual(self.post('/api/projects/hurryApp', method='DELETE').status_code, 200)
+        self.assertNotIn('hurryApp', [p['id'] for p in self.client.get('/api/projects').json['projects']])
+        self.assertEqual(self.post('/api/jobs', {'projects': ['hurryApp'], 'build_types': ['debug'], 'branch': 'main'}).status_code, 400)
+
+    def test_project_sources_and_branch_override(self):
+        self.assertEqual(self.post('/api/projects', {'url': 'https://github.com/acme/src_app.git/', 'name': 'Src', 'branch': 'develop'}).status_code, 201)
+        self.assertEqual(self.post('/api/projects', {'url': 'https://github.com/acme/br_app', 'name': 'Br', 'branch': '--bad'}).status_code, 400)
+        listed = {p['id']: p for p in self.client.get('/api/projects').json['projects']}
+        self.assertEqual((listed['src_app']['url'], listed['src_app']['branch']), ('https://github.com/acme/src_app.git', 'develop'))
+        self.assertEqual(self.post('/api/projects/src_app', {'url': 'https://github.com/acme/other'}, method='PATCH').status_code, 400)
+        self.assertEqual(self.post('/api/projects/src_app', {'branch': 'release'}, method='PATCH').status_code, 200)
+        self.assertEqual(self.store.settings().get('GIT_USER'), None)
+        with patch('modules.build_service.shutil.which', return_value='tool'):
+            r = self.post('/api/jobs', {'projects': ['src_app', 'hurryApp'], 'build_types': ['debug']})
+            self.assertEqual(r.status_code, 201, r.json)
+            self.assertEqual(r.json['job']['branch'], 'release, main')
+            self.assertEqual(r.json['job']['branch_override'], '')
+        from modules import git_module
+        with patch.dict('os.environ', {'PROJECT_SOURCES': self.store.sources_for(['src_app']), 'GIT_BRANCH': ''}):
+            self.assertEqual(git_module.source_for('src_app'), ('https://github.com/acme/src_app.git', 'release'))
+        with patch.dict('os.environ', {'PROJECT_SOURCES': self.store.sources_for(['src_app']), 'GIT_BRANCH': 'hotfix'}):
+            self.assertEqual(git_module.source_for('src_app')[1], 'hotfix')
+
+    def test_tenant_projects(self):
+        self.assertEqual(self.post('/api/projects', {'url': 'https://github.com/acme/wl_app', 'name': 'WL', 'tenants': ['Bad Id']}).status_code, 400)
+        self.assertEqual(self.post('/api/projects', {'url': 'https://github.com/acme/wl_app', 'name': 'WL', 'tenants': ['alhaty', 'burger_house']}).status_code, 201)
+        listed = {p['id']: p for p in self.client.get('/api/projects').json['projects']}
+        self.assertEqual(listed['wl_app']['tenants'], ['alhaty', 'burger_house'])
+        self.assertEqual(listed['hurryApp']['tenants'], [])
+        job = lambda **b: self.post('/api/jobs', {'projects': ['wl_app'], 'build_types': ['debug'], 'branch': 'main', **b})
+        self.assertEqual(job().status_code, 400)
+        self.assertEqual(job(tenants={'wl_app': ['nope']}).status_code, 400)
+        self.assertEqual(job(tenants={'wl_app': ['alhaty']}).status_code in (201, 422), True)
+        queued = self.store.enqueue(self.admin, ['wl_app'], ['debug'], 'main', {'wl_app': ['alhaty', 'burger_house']})
+        self.assertEqual(self.store.job(queued['id'])['tenants'], {'wl_app': ['alhaty', 'burger_house']})
+        from modules.build_service import BuildPlan
+        self.assertEqual(BuildPlan(('wl_app', 'hurryApp'), ('debug',), {}, {'wl_app': ['alhaty', 'burger_house']}).units,
+                         [('wl_app', 'alhaty'), ('wl_app', 'burger_house'), ('hurryApp', None)])
+        self.assertEqual(self.post('/api/projects/wl_app', {'tenants': []}, method='PATCH').status_code, 200)
 
     def test_auth_required_for_data_and_mutations(self):
         client = self.app.test_client()
@@ -148,10 +199,12 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(response.status_code,201,response.json)
         job=self.store.job(response.json['job']['id'],internal=True)
         self.assertEqual(job['settings']['GIT_BRANCH'],'release/test')
+        self.assertEqual(json.loads(job['settings']['PROJECT_SOURCES'])['hurryApp']['url'],'https://github.com/example/hurryApp.git')
         self.assertIn(job['id'],job['settings']['GIT_WORKSPACE'])
         self.assertNotIn('settings',response.json['job'])
-        self.store.save_settings({'GIT_USER':'changed'})
-        self.assertEqual(self.store.job(job['id'],internal=True)['settings']['GIT_USER'],'example')
+        self.store.update_project('hurryApp', url='https://github.com/changed/hurryApp.git', branch='dev')
+        frozen=self.store.job(job['id'],internal=True)['settings']
+        self.assertEqual(json.loads(frozen['PROJECT_SOURCES'])['hurryApp']['url'],'https://github.com/example/hurryApp.git')
         for bad in ('--config', 'main;echo', '../main', 'bad branch', 'x.lock', 'x//y'):
             self.assertFalse(valid_branch(bad))
         with patch('modules.build_service.shutil.which', return_value='tool'):

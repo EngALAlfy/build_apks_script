@@ -10,12 +10,12 @@ from pathlib import Path
 from uuid import uuid4
 
 from werkzeug.security import check_password_hash, generate_password_hash
-from bin.constants import projects
+from bin.constants import projects, project_colors, project_tenants, project_sources
 
 TERMINAL = {'completed', 'warning', 'failed', 'cancelled', 'interrupted', 'delete_failed'}
 ROLES = {'admin', 'builder', 'viewer'}
 SECRET_FIELDS = {'MEGA_PASSWORD', 'FTP_PASS', 'EMAIL_PASSWORD', 'DISCORD_WEBHOOK', 'SLACK_WEBHOOK'}
-PUBLIC_FIELDS = {'GIT_USER', 'GIT_BRANCH', 'CLEAN_BUILD', 'MAX_PARALLEL_BUILDS', 'MEGA_ENABLED', 'MEGA_USERNAME',
+PUBLIC_FIELDS = {'CLEAN_BUILD', 'MAX_PARALLEL_BUILDS', 'MEGA_ENABLED', 'MEGA_USERNAME',
                  'FTP_ENABLED', 'FTP_HOST', 'FTP_USER', 'FTP_PATH', 'FTP_BASE_URL',
                  'DISCORD_ENABLED', 'SLACK_ENABLED', 'EMAIL_ENABLED', 'EMAILS', 'SMTP_HOST', 'SMTP_PORT', 'EMAIL_USER'}
 DUMMY_PASSWORD_HASH = generate_password_hash('nonexistent-user-placeholder')
@@ -23,6 +23,12 @@ DUMMY_PASSWORD_HASH = generate_password_hash('nonexistent-user-placeholder')
 
 class Conflict(ValueError):
     pass
+
+
+DEFAULT_PROJECTS, DEFAULT_COLORS = dict(projects), dict(project_colors)
+TENANT_ID = re.compile(r'[a-z0-9][a-z0-9_-]{0,39}')
+PROJECT_KEY = re.compile(r'[A-Za-z0-9][A-Za-z0-9._-]{0,79}')
+PALETTE = ('#007bff', '#28a745', '#dc3545', '#17a2b8', '#6610f2', '#fd7e14', '#e83e8c', '#20c997', '#6f42c1', '#ffc107')
 
 
 def now():
@@ -71,14 +77,129 @@ class Store:
                 CREATE TABLE IF NOT EXISTS audit (
                     id INTEGER PRIMARY KEY AUTOINCREMENT, actor TEXT, action TEXT, target TEXT, created_at INTEGER);
             ''')
+            fresh = not db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='projects'").fetchone()
+            db.execute('CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, name TEXT NOT NULL, color TEXT NOT NULL, position INTEGER NOT NULL, tenants TEXT NOT NULL DEFAULT \'[]\', repo_url TEXT NOT NULL DEFAULT \'\', branch TEXT NOT NULL DEFAULT \'main\')')
+            if 'tenants' not in {r['name'] for r in db.execute('PRAGMA table_info(projects)')}:
+                db.execute("ALTER TABLE projects ADD COLUMN tenants TEXT NOT NULL DEFAULT '[]'")
+            have = {r['name'] for r in db.execute('PRAGMA table_info(projects)')}
+            for column, definition in (('repo_url', "TEXT NOT NULL DEFAULT ''"), ('branch', "TEXT NOT NULL DEFAULT 'main'")):
+                if column not in have:
+                    db.execute(f'ALTER TABLE projects ADD COLUMN {column} {definition}')
+            if fresh:
+                db.executemany('INSERT INTO projects(id,name,color,position) VALUES (?,?,?,?)',
+                               [(k, v, DEFAULT_COLORS.get(k, PALETTE[i % len(PALETTE)]), i) for i, (k, v) in enumerate(DEFAULT_PROJECTS.items())])
             defaults = {k: 'false' for k in PUBLIC_FIELDS if k.endswith('_ENABLED')}
-            defaults.update(GIT_USER='', GIT_BRANCH='main', CLEAN_BUILD='true', MAX_PARALLEL_BUILDS='2', SMTP_PORT='587', FTP_PATH='/')
+            defaults.update(CLEAN_BUILD='true', MAX_PARALLEL_BUILDS='2', SMTP_PORT='587', FTP_PATH='/')
             db.execute('INSERT OR IGNORE INTO settings VALUES (1,?)', (json.dumps(defaults),))
+            # Legacy global owner/branch settings become per-project sources, then are retired.
+            stored = json.loads(db.execute('SELECT value FROM settings WHERE id=1').fetchone()[0])
+            owner, branch = (stored.get('GIT_USER') or '').strip(), (stored.get('GIT_BRANCH') or '').strip() or 'main'
+            if re.fullmatch(r'[A-Za-z0-9-]+', owner):
+                db.execute("UPDATE projects SET repo_url='https://github.com/'||?||'/'||id||'.git', branch=? WHERE repo_url=''", (owner, branch))
+            if 'GIT_USER' in stored or 'GIT_BRANCH' in stored:
+                stored.pop('GIT_USER', None)
+                stored.pop('GIT_BRANCH', None)
+                db.execute('UPDATE settings SET value=? WHERE id=1', (json.dumps(stored),))
         with self.connect(immediate=True) as db:
             columns = {row['name'] for row in db.execute('PRAGMA table_info(jobs)')}
-            for name, definition in (('worker_slot', 'INTEGER'), ('worker_active', 'INTEGER NOT NULL DEFAULT 0')):
+            for name, definition in (('worker_slot', 'INTEGER'), ('worker_active', 'INTEGER NOT NULL DEFAULT 0'), ('tenants', "TEXT NOT NULL DEFAULT '{}'")):
                 if name not in columns:
                     db.execute(f'ALTER TABLE jobs ADD COLUMN {name} {definition}')
+        self.sync_projects()
+
+    def sync_projects(self):
+        """Mirror the persisted registry into the shared in-memory dicts (mutated in place)."""
+        with self.connect() as db:
+            rows = db.execute('SELECT * FROM projects ORDER BY position,id').fetchall()
+        projects.clear()
+        project_colors.clear()
+        project_tenants.clear()
+        project_sources.clear()
+        for row in rows:
+            projects[row['id']] = row['name']
+            project_colors[row['id']] = row['color']
+            project_tenants[row['id']] = json.loads(row['tenants'])
+            project_sources[row['id']] = {'url': row['repo_url'], 'branch': row['branch']}
+
+    @staticmethod
+    def clean_tenants(tenants):
+        if tenants is None:
+            return []
+        if not isinstance(tenants, list) or len(tenants) > 30 or any(not isinstance(t, str) or not TENANT_ID.fullmatch(t) for t in tenants):
+            raise ValueError('Tenants must be lowercase ids (letters, digits, underscores, hyphens), at most 30.')
+        return list(dict.fromkeys(tenants))
+
+    @staticmethod
+    def parse_repo_url(url):
+        """Return (normalized clone URL, repository name) for a GitHub HTTPS URL."""
+        match = re.fullmatch(r'https://github\.com/([A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))/([A-Za-z0-9._-]{1,80}?)(?:\.git)?/?', (url or '').strip()) if isinstance(url, str) else None
+        if not match or match.group(2) in ('.', '..') or match.group(2).startswith('-'):
+            raise ValueError('Enter the full GitHub repository URL, like https://github.com/owner/repository.')
+        return f'https://github.com/{match.group(1)}/{match.group(2)}.git', match.group(2)
+
+    @staticmethod
+    def clean_branch(branch):
+        branch = (branch or 'main').strip() if isinstance(branch, str) or branch is None else ''
+        if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._/-]{0,119}', branch) or any(x in branch for x in ('..', '//', '/.')) or branch.endswith(('/', '.', '.lock')):
+            raise ValueError('Enter a valid default branch using letters, numbers, dots, underscores, slashes, or hyphens.')
+        return branch
+
+    def add_project(self, url, name, branch='main', color=None, tenants=None):
+        url, key = self.parse_repo_url(url)
+        branch = self.clean_branch(branch)
+        name = name.strip() if isinstance(name, str) else ''
+        if not 1 <= len(name) <= 60:
+            raise ValueError('Enter a display name of 1–60 characters.')
+        if color is not None and (not isinstance(color, str) or not re.fullmatch(r'#[0-9a-fA-F]{6}', color)):
+            raise ValueError('Color must look like #1a73e8.')
+        tenants = self.clean_tenants(tenants)
+        with self.connect(immediate=True) as db:
+            rows = db.execute('SELECT id,position FROM projects').fetchall()
+            if any(r['id'].lower() == key.lower() for r in rows):
+                raise Conflict(f'A project named {key} already exists.')
+            if len(rows) >= 50:
+                raise Conflict('The project limit (50) has been reached.')
+            db.execute('INSERT INTO projects(id,name,color,position,tenants,repo_url,branch) VALUES (?,?,?,?,?,?,?)',
+                       (key, name, color or PALETTE[len(rows) % len(PALETTE)], max([r['position'] for r in rows], default=-1) + 1, json.dumps(tenants), url, branch))
+        self.sync_projects()
+        return key
+
+    def update_project(self, key, name=None, color=None, tenants=None, url=None, branch=None):
+        with self.connect(immediate=True) as db:
+            row = db.execute('SELECT * FROM projects WHERE id=?', (key,)).fetchone()
+            if not row:
+                raise ValueError('Project not found.')
+            name = row['name'] if name is None else name.strip() if isinstance(name, str) else ''
+            color = row['color'] if color is None else color
+            if not 1 <= len(name) <= 60 or not isinstance(color, str) or not re.fullmatch(r'#[0-9a-fA-F]{6}', color):
+                raise ValueError('Enter a display name (1–60 characters) and a color like #1a73e8.')
+            tenants = json.loads(row['tenants']) if tenants is None else self.clean_tenants(tenants)
+            if url is None:
+                url = row['repo_url']
+            else:
+                url, repo = self.parse_repo_url(url)
+                if repo.lower() != key.lower():
+                    raise ValueError(f'The repository must be named {key}. Add a new project to build a different repository.')
+            branch = row['branch'] if branch is None else self.clean_branch(branch)
+            db.execute('UPDATE projects SET name=?,color=?,tenants=?,repo_url=?,branch=? WHERE id=?', (name, color, json.dumps(tenants), url, branch, key))
+        self.sync_projects()
+
+    def sources_for(self, selected):
+        return json.dumps({p: dict(project_sources[p]) for p in selected if p in project_sources})
+
+    def remove_project(self, key):
+        with self.connect(immediate=True) as db:
+            if not db.execute('SELECT 1 FROM projects WHERE id=?', (key,)).fetchone():
+                raise ValueError('Project not found.')
+            for job in db.execute("SELECT projects FROM jobs WHERE status IN ('queued','running','cancel_requested','deleting')"):
+                if key in json.loads(job['projects']):
+                    raise Conflict('This project has queued or running builds. Cancel or wait for them first.')
+            db.execute('DELETE FROM projects WHERE id=?', (key,))
+            for user in db.execute('SELECT id,projects FROM users').fetchall():
+                allowed = json.loads(user['projects'])
+                if key in allowed:
+                    db.execute('UPDATE users SET projects=? WHERE id=?', (json.dumps([p for p in allowed if p != key]), user['id']))
+        self.sync_projects()
 
     @contextmanager
     def connect(self, immediate=False):
@@ -221,9 +342,10 @@ class Store:
         if row is None:
             return None
         data = dict(row)
-        for key in ('projects', 'build_types', 'errors', 'warnings'):
+        for key in ('projects', 'build_types', 'errors', 'warnings', 'tenants'):
             data[key] = json.loads(data[key])
         settings = json.loads(data.pop('settings'))
+        data['branch_override'] = settings.get('GIT_BRANCH', '')
         if internal:
             data['settings'] = settings
         data['can_delete'] = not data.get('worker_active') and (data['status'] in TERMINAL or data['status'] == 'queued')
@@ -238,7 +360,7 @@ class Store:
             rows = db.execute('SELECT jobs.*, (SELECT COUNT(*) FROM artifacts WHERE job_id=jobs.id) AS artifact_count FROM jobs ORDER BY created_at DESC,rowid DESC LIMIT 1000')
             return [j for r in rows if self.can_view(user, j := self.decode_job(r))]
 
-    def enqueue(self, user, selected_projects, build_types, branch):
+    def enqueue(self, user, selected_projects, build_types, branch='', tenants=None):
         job_id = uuid4().hex
         with self.connect(immediate=True) as db:
             current = self.public_user(db.execute('SELECT * FROM users WHERE id=?', (user['id'],)).fetchone())
@@ -251,11 +373,12 @@ class Store:
             if db.execute("SELECT COUNT(*) FROM jobs WHERE user_id=? AND status IN ('queued','running','cancel_requested')", (user['id'],)).fetchone()[0] >= 10:
                 raise Conflict('You already have ten pending builds.')
             settings = json.loads(db.execute('SELECT value FROM settings WHERE id=1').fetchone()[0])
-            settings.update(GIT_BRANCH=branch, GIT_WORKSPACE=str(self.root / 'workspaces' / job_id),
+            label = branch or ', '.join(dict.fromkeys(project_sources.get(p, {}).get('branch', 'main') for p in selected_projects))
+            settings.update(GIT_BRANCH=branch, PROJECT_SOURCES=self.sources_for(selected_projects), GIT_WORKSPACE=str(self.root / 'workspaces' / job_id),
                             RESULT_WORKSPACE=str(self.root / 'artifacts' / job_id),
                             GIT_TERMINAL_PROMPT='0', GCM_INTERACTIVE='never')
-            db.execute('INSERT INTO jobs(id,user_id,username,projects,build_types,branch,settings,created_at) VALUES (?,?,?,?,?,?,?,?)',
-                       (job_id, user['id'], user['username'], json.dumps(selected_projects), json.dumps(build_types), branch, json.dumps(settings), now()))
+            db.execute('INSERT INTO jobs(id,user_id,username,projects,build_types,branch,settings,created_at,tenants) VALUES (?,?,?,?,?,?,?,?,?)',
+                       (job_id, user['id'], user['username'], json.dumps(selected_projects), json.dumps(build_types), label, json.dumps(settings), now(), json.dumps(tenants or {})))
         return self.job(job_id)
 
     def claim(self):

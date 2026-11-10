@@ -1,7 +1,7 @@
 """UI-independent coordinator. Workers publish events; only Tk consumes them."""
 import os
 import shutil
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from queue import Queue
 from threading import Thread
@@ -24,6 +24,12 @@ class BuildPlan:
     projects: tuple
     build_types: tuple
     settings: dict
+    tenants: dict = field(default_factory=dict)
+
+    @property
+    def units(self):
+        """(project, tenant) pairs; tenant is None for projects without flavors."""
+        return [(p, t) for p in self.projects for t in (self.tenants.get(p) or [None])]
 
     def validate(self):
         errors = []
@@ -33,6 +39,13 @@ class BuildPlan:
             errors.append('Select at least one build format.')
         if any(p not in constants.projects for p in self.projects):
             errors.append('The project selection contains an unknown repository.')
+        for project, picked in self.tenants.items():
+            known = constants.project_tenants.get(project, [])
+            if project not in self.projects or any(t not in known for t in picked):
+                errors.append('The tenant selection contains an unknown tenant.')
+        for project in self.projects:
+            if constants.project_tenants.get(project) and not self.tenants.get(project):
+                errors.append(f'Choose at least one tenant for {constants.projects.get(project, project)}.')
         if any(t not in constants.tasks for t in self.build_types):
             errors.append('The build selection contains an unknown format.')
         for key, title in [('GIT_WORKSPACE', 'Source workspace'), ('RESULT_WORKSPACE', 'Artifact directory')]:
@@ -42,18 +55,24 @@ class BuildPlan:
             elif Path(value).exists() and not Path(value).is_dir():
                 errors.append(f'{title} must be a directory.')
         branch = self.settings.get('GIT_BRANCH', '').strip()
-        if not branch or branch.startswith('-') or any(c in branch for c in ' ~^:?*[\\') or '..' in branch:
+        if branch and (branch.startswith('-') or any(c in branch for c in ' ~^:?*[\\') or '..' in branch):
             errors.append('Enter a valid Git branch name.')
         owner = self.settings.get('GIT_USER', '').strip()
         if owner and (owner.startswith('-') or any(c not in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-' for c in owner)):
             errors.append('GitHub owner must be a username or organization name.')
-        if not owner and self.settings.get('GIT_WORKSPACE'):
-            if any(not (Path(self.settings['GIT_WORKSPACE']) / p / '.git').exists() for p in self.projects):
-                errors.append('Set a GitHub owner to clone missing repositories.')
+        if self.settings.get('GIT_WORKSPACE'):
+            try:
+                import json
+                sources = json.loads(self.settings.get('PROJECT_SOURCES') or '{}')
+            except ValueError:
+                sources = {}
+            for p in self.projects:
+                if not owner and not sources.get(p, {}).get('url') and not (Path(self.settings['GIT_WORKSPACE']) / p / '.git').exists():
+                    errors.append(f'Set the GitHub repository URL for {constants.projects.get(p, p)} in Projects.')
         if any(self.settings.get(k + '_ENABLED') == 'true' for k in ('DISCORD', 'EMAIL', 'SLACK')) and not any(
                 self.settings.get(k + '_ENABLED') == 'true' for k in ('MEGA', 'FTP')):
             errors.append('Enable MEGA or FTP delivery to send notification download links.')
-        for executable in ('git', 'flutter'):
+        for executable in ('git', 'flutter') + (('dart',) if any(self.tenants.values()) else ()):
             if not shutil.which(executable):
                 errors.append(f'{executable.title()} was not found on PATH.')
         for service, fields in SERVICE_FIELDS.items():
@@ -119,25 +138,29 @@ class BuildService:
         stamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S_%f')
         completed, failures, warnings = 0, [], []
         try:
-            for index, project in enumerate(plan.projects):
+            units = plan.units
+            for index, (project, tenant) in enumerate(units):
                 check_cancelled()
-                self.emit('project', project=project, state='Running', progress=index / len(plan.projects))
+                label = f'{project} · {tenant}' if tenant else project
+                title = f'{constants.projects[project]} · {tenant}' if tenant else constants.projects[project]
+                self.emit('project', project=label, state='Running', progress=index / len(units))
+                upload_key = f'{project}-{tenant}' if tenant else project
                 entries = {}
                 def record(kind, artifact):
                     nonlocal completed
-                    entries[kind] = history_utils.add_entry(project, constants.projects[project], kind, stamp, artifact, {})
+                    entries[kind] = history_utils.add_entry(project, title, kind, stamp, artifact, {})
                     completed += 1
                     self.emit('artifact', path=artifact, count=completed)
                 try:
                     artifacts = build_project_module.build_project(
                         project, stamp,
-                        lambda stage: self.emit('stage', project=project, stage=stage), record)
+                        lambda stage: self.emit('stage', project=label, stage=stage), record, **({'tenant': tenant} if tenant else {}))
                     check_cancelled()
                     if any(plan.settings.get(k + '_ENABLED') == 'true' for k in ('MEGA', 'FTP')):
-                        self.emit('stage', project=project, stage='Distributing artifacts')
+                        self.emit('stage', project=label, stage='Distributing artifacts')
                         try:
                             from modules import upload_module
-                            results = upload_module.mass_upload([(project, artifacts)], stamp).get(project, {})
+                            results = upload_module.mass_upload([(upload_key, artifacts)], stamp).get(upload_key, {})
                             from modules import send_module
                             for kind, artifact in artifacts.items():
                                 check_cancelled()
@@ -146,21 +169,21 @@ class BuildService:
                                 meta = data.get('metadata', {})
                                 expected = [s.lower() for s in ('MEGA', 'FTP') if plan.settings.get(s + '_ENABLED') == 'true']
                                 if any(s not in urls for s in expected):
-                                    warnings.append(f'{constants.projects[project]} / {kind}: distribution incomplete')
+                                    warnings.append(f'{title} / {kind}: distribution incomplete')
                                 # Persist upload handles before attempting notifications.
                                 history_utils.update_entry(entries[kind], urls=urls,
                                     mega_handles={'mega': meta['mega_handle']} if meta.get('mega_handle') else {})
                                 if urls:
                                     if plan.settings.get('SLACK_ENABLED') == 'true':
                                         from modules.slack_module import send_to_slack
-                                        slack_ok = send_to_slack(project, kind, urls, stamp, artifact)
+                                        slack_ok = send_to_slack(upload_key, kind, urls, stamp, artifact)
                                         history_utils.update_entry(entries[kind], slack_notified=bool(slack_ok))
                                         if not slack_ok:
                                             warnings.append(f'{project} / {kind}: Slack notification was not acknowledged; check Console and the Slack channel before retrying')
-                                    message = send_module.send_to_discord(f'{project} [{kind}]', urls, stamp, str(Path(artifact).parent))
+                                    message = send_module.send_to_discord(f'{label} [{kind}]', urls, stamp, str(Path(artifact).parent))
                                     if plan.settings.get('DISCORD_ENABLED') == 'true' and not message:
                                         warnings.append(f'{project}: Discord notification failed')
-                                    email_ok = send_module.send_to_email(f'{project} [{kind}]', urls, stamp, str(Path(artifact).parent))
+                                    email_ok = send_module.send_to_email(f'{label} [{kind}]', urls, stamp, str(Path(artifact).parent))
                                     if plan.settings.get('EMAIL_ENABLED') == 'true' and not email_ok:
                                         warnings.append(f'{project}: email notification failed')
                                     history_utils.update_entry(entries[kind], discord_message_ids=[message] if message else [])
@@ -169,13 +192,13 @@ class BuildService:
                         except Exception as exc:
                             warnings.append(f'{project}: distribution failed: {exc}')
                             print(warnings[-1])
-                    self.emit('project', project=project, state='Complete', progress=(index + 1) / len(plan.projects))
+                    self.emit('project', project=label, state='Complete', progress=(index + 1) / len(units))
                 except BuildCancelled:
                     raise
                 except Exception as exc:
-                    failures.append(f'{constants.projects[project]}: {exc}')
+                    failures.append(f'{title}: {exc}')
                     print(f'BUILD FAILED: {failures[-1]}')
-                    self.emit('project', project=project, state='Failed', progress=(index + 1) / len(plan.projects))
+                    self.emit('project', project=label, state='Failed', progress=(index + 1) / len(units))
             self.emit('finished', state='Failed' if failures else ('Warning' if warnings else 'Complete'),
                       count=completed, errors=failures, warnings=warnings)
         except BuildCancelled:

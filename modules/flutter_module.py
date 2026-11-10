@@ -29,3 +29,9 @@ def build_release(project):
 
 def build_appbundle(project):
     run_flutter(project, ['build', 'appbundle', '--release'], 'Build Android App Bundle')
+
+
+def setup_tenant(project, tenant):
+    """White-label projects must configure icons, splash and native ids for one tenant before building."""
+    run_command(['dart', 'run', 'bin/build_tenant.dart', '--tenant', tenant],
+                Path(os.environ['GIT_WORKSPACE']) / project, f'Configure tenant {tenant}')
